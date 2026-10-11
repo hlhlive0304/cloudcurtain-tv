@@ -7,8 +7,8 @@ android {
         applicationId 'cn.cloudcurtain.tv'
         minSdk 23
         targetSdk 35
-        versionCode 17
-        versionName '0.1.16-preview'
+        versionCode 18
+        versionName '0.1.17-preview'
         testInstrumentationRunner 'cn.cloudcurtain.tv.CloudLiveInstrumentation'
     }
     buildTypes { release { minifyEnabled false } }

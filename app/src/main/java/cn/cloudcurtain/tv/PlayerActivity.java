@@ -27,7 +27,7 @@ public class PlayerActivity extends Activity {
         if(player==null)return;long now=SystemClock.elapsedRealtime();
         boolean waiting=player.getPlayWhenReady()&&(player.getPlaybackState()==Player.STATE_BUFFERING||(!firstFrame&&player.getPlaybackState()==Player.STATE_READY));
         if(!waiting||refreshing)waitingSince=0;else if(waitingSince==0)waitingSince=now;
-        else if(!watchdogFailed&&now-waitingSince>=(supportsRecovery()&&!compatiblePlayback&&firstFrame&&"auto".equals(media.quality)?15000:PlaybackRecovery.STALL_MS)){
+        else if(!watchdogFailed&&(firstFrame||now-playbackStats.lastByteTime>=15000||now-waitingSince>=120000)&&now-waitingSince>=(supportsRecovery()&&!compatiblePlayback&&firstFrame&&"auto".equals(media.quality)?15000:PlaybackRecovery.STALL_MS)){
             watchdogFailed=true;LoginDiagnostics.record(PlayerActivity.this,Provider.read(media.provider),"播放等待超时",new java.util.concurrent.TimeoutException());
             if(recovery.stalled(now-waitingSince,"auto".equals(media.quality)&&!compatiblePlayback,firstFrame)&&!"original".equals(media.quality)){if(!compatiblePlayback&&supportsRecovery()){Ui.toast(PlayerActivity.this,"原文件缓冲慢，自动模式切换网盘兼容线路；可手动选回原画");refreshAddress(true);}else recoverAutomatically();return;}
             player.pause();showFailure("视频长时间没有出画面，请重新获取播放地址或返回文件。",!compatiblePlayback&&supportsRecovery());
@@ -53,7 +53,7 @@ public class PlayerActivity extends Activity {
         playbackPanel.setOnShowListener(d->playbackPanel.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{try{int a=Integer.parseInt(intro.getText().toString()),b=Integer.parseInt(outro.getText().toString());if(a<0||b<0||a>1800||b>1800)throw new NumberFormatException();saveSkip(a,b);playbackPanel.dismiss();}catch(NumberFormatException e){Ui.toast(this,"请填写 0–1800 秒");}}));playbackPanel.show();
     }
     private void saveSkip(int intro,int outro){skipPolicy.configure(intro,outro);String key=Integer.toHexString(media.key.hashCode());getSharedPreferences("clip_skip",0).edit().putInt(key+":intro",intro).putInt(key+":outro",outro).apply();Ui.toast(this,intro==0&&outro==0?"片头片尾跳过已关闭":"已保存当前视频的跳过设置");}
-    private boolean supportsRecovery(){return "ALI".equals(media.provider)||"QUARK".equals(media.provider);}
+    private boolean supportsRecovery(){return "ALI".equals(media.provider)||"QUARK".equals(media.provider)||"BAIDU".equals(media.provider);}
     private void recoverAutomatically(){Ui.toast(this,"正在更新当前清晰度的播放地址…");refreshAddress(compatiblePlayback);}
     private void showFailure(String message,boolean offerCompatible){
         if(isFinishing()||errorDialog!=null&&errorDialog.isShowing())return;
@@ -81,12 +81,15 @@ public class PlayerActivity extends Activity {
     private void init(){if(player!=null||media==null)return;soundMode=getSharedPreferences("settings",0).getString("sound_mode","auto");firstFrame=false;watchdogFailed=false;waitingSince=0;
         OkHttpDataSource.Factory http=new OkHttpDataSource.Factory(Net.client(media)).setUserAgent(media.headers.containsKey("User-Agent")?media.headers.get("User-Agent"):Net.UA).setTransferListener(playbackStats);
         DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,http);
-        player=new ExoPlayer.Builder(this).setRenderersFactory(new androidx.media3.exoplayer.DefaultRenderersFactory(this).setEnableDecoderFallback(true)).setLoadControl(PlaybackBuffer.create()).setMediaSourceFactory(new DefaultMediaSourceFactory(data,captions.wrap(new androidx.media3.extractor.DefaultExtractorsFactory(),"main"))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();
+        player=new ExoPlayer.Builder(this).setRenderersFactory(new androidx.media3.exoplayer.DefaultRenderersFactory(this).setEnableDecoderFallback(true)).setLoadControl(PlaybackBuffer.create(media)).setMediaSourceFactory(new DefaultMediaSourceFactory(data,captions.wrap(new androidx.media3.extractor.DefaultExtractorsFactory(),"main"))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
         player.setHandleAudioBecomingNoisy(true);view.setPlayer(player);player.setPlaybackSpeed(speed);
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setPreferredTextLanguage("zh").setForceHighestSupportedBitrate(true).setViewportSize(Integer.MAX_VALUE,Integer.MAX_VALUE,false).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,textDisabled).build());
         player.addListener(new Player.Listener(){
-            @Override public void onTracksChanged(Tracks tracks){applyAudio(tracks);applySubtitles(tracks);}
+            @Override public void onTracksChanged(Tracks tracks){
+                if(PlaybackVideo.unsupported(tracks)){if(refreshing)return;if(supportsRecovery()&&!compatiblePlayback&&!"original".equals(media.quality)&&recovery.error(null,PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,false)){refreshAddress(true);return;}player.pause();watchdogFailed=true;handler.removeCallbacks(watchdog);showFailure("当前设备的解码器不支持这条视频轨道。4K 分辨率与 Dolby Vision / HEVC 的编码支持是两件事，可选择网盘提供的兼容画质。",supportsRecovery()&&!compatiblePlayback);return;}
+                applyAudio(tracks);applySubtitles(tracks);
+            }
             @Override public void onAudioSessionIdChanged(int id){audioSession=id;updateSound();}
             @Override public void onPlayerError(PlaybackException e){
                 if(isFinishing())return;
@@ -147,7 +150,7 @@ public class PlayerActivity extends Activity {
         if(refreshing||player==null)return;
         if(media.provider.isEmpty()||!media.key.startsWith(media.provider+":")){player.prepare();return;}
         refreshing=true;handler.removeCallbacks(watchdog);long at=player.getCurrentPosition();boolean wasPlaying=player.getPlayWhenReady();position=at;resumePlay=wasPlaying;closeTranslation();closeOriginalSubtitles();player.stop();String id=media.key.substring(media.provider.length()+1);Ui.toast(this,"正在重新获取播放地址…");
-        worker.execute(()->{try{CloudApi api=playbackApi();CloudApi.Entry entry=new CloudApi.Entry(id,media.title,false,0);MediaSpec fresh=compatible?api.resolveCompatible(entry):api.resolveQuality(entry,quality==null?media.quality:quality);if(quality!=null&&quality.equals("auto")&&!fresh.compatible){fresh.quality="auto";fresh.qualityLabel="原文件 · 自动最高";}for(MediaSpec.Sub sub:media.subtitles)if(sub.url.startsWith("cloud:"))fresh.subtitles.add(sub);
+        worker.execute(()->{try{CloudApi api=playbackApi();CloudApi.Entry entry=new CloudApi.Entry(id,media.title,false,media.sourceBytes);MediaSpec fresh=compatible?api.resolveCompatible(entry):api.resolveQuality(entry,quality==null?media.quality:quality);if(quality!=null&&quality.equals("auto")&&!fresh.compatible){fresh.quality="auto";fresh.qualityLabel="原文件 · 自动最高";}for(MediaSpec.Sub sub:media.subtitles)if(sub.url.startsWith("cloud:"))fresh.subtitles.add(sub);
             runOnUiThread(()->{refreshing=false;if(isFinishing())return;if(errorDialog!=null)errorDialog.dismiss();if(player!=null){sound.close();view.setPlayer(null);player.release();player=null;}fresh.matchTitle=media.matchTitle;fresh.sourceWidth=media.sourceWidth;fresh.sourceHeight=media.sourceHeight;for(MediaSpec.Sub sub:media.subtitles)if(sub.sameFile&&SubtitlePolicy.exactChinese(fresh.subtitles)==null)fresh.subtitles.add(sub);compatiblePlayback=fresh.compatible;media=fresh;fileInfoRead=false;getIntent().putExtra("media",media.json());getSharedPreferences("progress",0).edit().putBoolean("compatible:"+Integer.toHexString(media.key.hashCode()),media.compatible).putString("quality:"+Integer.toHexString(media.key.hashCode()),media.quality).apply();position=at;resumePlay=wasPlaying;if(started)init();});
         }catch(Exception e){LoginDiagnostics.record(this,Provider.read(media.provider),"重新获取播放地址",e);runOnUiThread(()->{refreshing=false;if(!isFinishing()){if(started&&player!=null){setItem(at,wasPlaying);ensureOriginalSubtitles();handler.removeCallbacks(watchdog);handler.postDelayed(watchdog,1000);}Ui.message(this,"获取地址失败",LoginErrors.friendly(e)+"\n已保留原播放来源和进度。");}});}});
     }
@@ -165,7 +168,7 @@ public class PlayerActivity extends Activity {
         TrackSelectionOverride old=player.getTrackSelectionParameters().overrides.get(choice.mediaTrackGroup);if(!choice.equals(old))player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setOverrideForType(choice).build());updateSound();
     }
     private CloudApi playbackApi(){CloudApi api=new CloudApi(Provider.read(media.provider));if("ALI".equals(media.provider))api.selectAliSpace(media.space);return api;}
-    private CloudApi.Entry playbackEntry(){return new CloudApi.Entry(media.key.substring(media.provider.length()+1),media.title,false,0);}
+    private CloudApi.Entry playbackEntry(){return new CloudApi.Entry(media.key.substring(media.provider.length()+1),media.title,false,media.sourceBytes);}
     private void qualityMenu(){
         if(player==null)return;List<PlaybackPanel.Choice> nativeChoices=new ArrayList<>();
         nativeChoices.add(new PlaybackPanel.Choice("自动 · 最高可播放",media.quality.equals("auto"),()->{
@@ -277,7 +280,7 @@ public class PlayerActivity extends Activity {
 
     private void playbackDiagnostics(){
         if(player==null)return;Format format=player.getVideoFormat();long ahead=Math.max(0,player.getBufferedPosition()-player.getCurrentPosition());
-        Ui.message(this,"播放诊断","来源："+media.qualityLabel+"\n实际分辨率："+(format==null?"尚未读取":format.width+" × "+format.height)+"\n编码："+(format==null?"尚未读取":Objects.toString(format.sampleMimeType,"未知"))+"\n最近视频下载："+String.format(Locale.ROOT,"%.2f",playbackStats.recentBytesPerSecond()*8/1000000.0)+" Mbps\n已缓冲："+ahead/1000+" 秒\n已下载："+playbackStats.bytes/1048576+" MB\n缓冲内存上限："+PlaybackBuffer.targetBytes(Runtime.getRuntime().maxMemory())/1048576+" MB\n以上为当前视频线路数据，不是家庭宽带测速。");
+        Ui.message(this,"播放诊断","来源："+media.qualityLabel+"\n实际分辨率："+(format==null?"尚未读取":format.width+" × "+format.height)+"\n编码："+(format==null?"尚未读取":Objects.toString(format.sampleMimeType,"未知"))+"\n最近视频下载："+String.format(Locale.ROOT,"%.2f",playbackStats.recentBytesPerSecond()*8/1000000.0)+" Mbps\n原文件平均码率："+(PlaybackBuffer.averageBitsPerSecond(media,player.getDuration())==0?"未知 / 在线转码":String.format(Locale.ROOT,"%.1f Mbps",PlaybackBuffer.averageBitsPerSecond(media,player.getDuration())/1000000.0))+"\n已缓冲："+ahead/1000+" 秒\n已下载："+playbackStats.bytes/1048576+" MB\n缓冲内存上限："+PlaybackBuffer.targetBytes(Runtime.getRuntime().maxMemory(),media)/1048576+" MB\n以上为当前视频线路数据，不是家庭宽带测速。");
     }
     private void menu(){
         List<PlaybackPanel.Choice> choices=new ArrayList<>();

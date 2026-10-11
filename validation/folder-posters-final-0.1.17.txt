@@ -1,0 +1,17 @@
+INSTRUMENTATION_RESULT: ali_real_poster_loaded=true
+INSTRUMENTATION_RESULT: date_and_fansub_tags_removed=true
+INSTRUMENTATION_RESULT: date_filename_uses_named_parent=true
+INSTRUMENTATION_RESULT: poster_0_height=381
+INSTRUMENTATION_RESULT: poster_0_source=DOUBAN
+INSTRUMENTATION_RESULT: poster_0_width=270
+INSTRUMENTATION_RESULT: poster_0_year=1995
+INSTRUMENTATION_RESULT: poster_1_height=382
+INSTRUMENTATION_RESULT: poster_1_source=DOUBAN
+INSTRUMENTATION_RESULT: poster_1_width=270
+INSTRUMENTATION_RESULT: poster_1_year=2004
+INSTRUMENTATION_RESULT: quark_real_poster_loaded=true
+INSTRUMENTATION_RESULT: real_folder_posters_loaded=5
+INSTRUMENTATION_RESULT: status=PASS
+INSTRUMENTATION_RESULT: tianyi_real_poster_loaded=true
+INSTRUMENTATION_RESULT: titleless_filename_uses_parent_and_year=true
+INSTRUMENTATION_CODE: -1

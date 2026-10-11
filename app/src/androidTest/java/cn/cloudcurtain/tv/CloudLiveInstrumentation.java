@@ -105,6 +105,8 @@ public final class CloudLiveInstrumentation extends Instrumentation {
     @Override public void onStart(){
         Bundle result=new Bundle();
         try{
+            if("baidu_folder_inventory".equals(task)){BaiduFolderLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if("baidu_stream_probe".equals(task)){BaiduStreamLiveCheck.run(this,result,keyHash);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if("update_flow".equals(task)||"update_public_feed".equals(task)){UpdateLiveCheck.run(this,result,"update_public_feed".equals(task));result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
 
 
@@ -180,6 +182,7 @@ public final class CloudLiveInstrumentation extends Instrumentation {
             if("translation_fixture".equals(task)||"translation_quark".equals(task)){
                 TranslationLiveCheck.run(this,result,task.equals("translation_quark"));result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;
             }
+            if("wall_folder_posters".equals(task)){FolderPosterLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if("wall_real_accounts".equals(task)){WallAccountLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if("wall_stress".equals(task)){
                 WallLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;
@@ -630,6 +633,7 @@ org.json.JSONArray items=reply.optJSONArray("list");if(items==null)items=reply.o
             if("playback_probe".equals(task)||"player_smoke".equals(task)){
                 result.putString("stage","catalog");Provider p=Provider.valueOf(provider);CloudApi api=hls&&p==Provider.QUARK?new CloudApi(p,(u,b,headers)->{if(b!=null&&u.contains("/file/v2/play?")){b.put("supports","m3u8");headers.put("User-Agent",CloudApi.QUARK_UA);}return Net.json(u,b,headers);}):new CloudApi(p);
                 java.util.ArrayDeque<String> folders=new java.util.ArrayDeque<>();folders.add(p.root());CloudApi.Entry movie=null;int scanned=0;
+                if(!keyHash.isEmpty())for(MovieLibrary.Movie indexed:new MovieLibrary(getTargetContext()).movies())if(indexed.provider==p&&Integer.toHexString(indexed.playbackKey().hashCode()).equals(keyHash)){movie=indexed.entry();if(p==Provider.ALI)api.selectAliSpace(indexed.space);break;}
                 while(movie==null&&!folders.isEmpty()&&scanned++<20){CloudApi.Page page=api.list(folders.remove(),1);for(CloudApi.Entry f:page.entries){if(f.directory)folders.add(f.id);else if(UrlRules.video(f.name)&&(keyHash.isEmpty()?f.size>1000000000L:f.size>0)&&(keyHash.isEmpty()||Integer.toHexString((p.name()+":"+f.id).hashCode()).equals(keyHash))){movie=f;break;}}}
                 if(movie==null)throw new java.io.IOException("No test movie");result.putLong("file_mb",movie.size/1048576);result.putInt("folders_read",scanned);
                 result.putString("stage","resolve");MediaSpec media=original?api.resolve(movie):api.resolveCompatible(movie);result.putBoolean("compatible",media.compatible);result.putString("media_host",UrlRules.host(media.url));

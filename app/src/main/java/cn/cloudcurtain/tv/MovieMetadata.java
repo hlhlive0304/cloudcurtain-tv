@@ -9,9 +9,11 @@ final class MovieMetadata {
     JSONObject json()throws JSONException{return new JSONObject().put("media_type",television?"tv":"movie").put("id",id).put(television?"name":"title",title).put(television?"original_name":"original_title",original).put(television?"first_air_date":"release_date",year).put("overview",overview).put("poster_path",poster).put("vote_average",rating).put("source",source).put("source_url",sourceUrl).put("image_page",imagePage);}
     static MovieMetadata automatic(List<MovieMetadata> candidates,MovieTitle query){
         String name=MovieTitle.normalized(query.title);if(name.isEmpty()||name.equals(MovieTitle.normalized("未识别影片")))return null;
-        List<MovieMetadata> exact=new ArrayList<>();for(MovieMetadata m:candidates)if(m.television==query.television&&(MovieTitle.normalized(m.title).equals(name)||MovieTitle.normalized(m.original).equals(name))&&(query.year.isEmpty()||query.year.equals(m.year)))exact.add(m);
+        List<MovieMetadata> exact=new ArrayList<>();for(MovieMetadata m:candidates)if(m.television==query.television&&(titleMatches(m.title,query.title)||titleMatches(m.original,query.title))&&(query.year.isEmpty()||query.year.equals(m.year)))exact.add(m);
         // Ambiguous titles require the user's selection; don't silently choose a remake.
         return exact.size()==1?exact.get(0):null;
     }
+    private static String matchName(String title){return MovieTitle.normalized(title).replace("剧场版","").replace("劇場版","");}
+    private static boolean titleMatches(String candidate,String query){String wanted=matchName(query);if(wanted.isEmpty())return false;if(matchName(candidate).equals(wanted))return true;String[] parts=candidate.split("[:：]",2);return parts.length==2&&(matchName(parts[0]).equals(wanted)||matchName(parts[1]).equals(wanted));}
     String caption(){return (year.isEmpty()?"年份未知":year)+(source.equals("WIKIPEDIA")?"  ·  维基百科":"")+(source.equals("DOUBAN")?"  ·  豆瓣电影":"")+(rating>0?"  ·  TMDB "+String.format(Locale.ROOT,"%.1f",rating):"");}
 }

@@ -9,26 +9,34 @@ final class MovieTitle {
     final String title,year;final boolean television;
     MovieTitle(String title,String year,boolean tv){this.title=title;this.year=year;this.television=tv;}
     private static final Pattern YEAR=Pattern.compile("(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])");
-    private static final Pattern EPISODE=Pattern.compile("(?i)(?:\\bS[0-9]{1,2}\\s*E[0-9]{1,3}\\b|第[一二三四五六七八九十0-9]+[季集])");
+    private static final Pattern EPISODE=Pattern.compile("(?i)(?:\\bS[0-9]{1,2}\\s*E[0-9]{1,3}\\b|\\bEP?[ ._-]?[0-9]{1,3}\\b|第[一二三四五六七八九十百0-9]+[季集])");
     private static final Pattern RELEASE=Pattern.compile("(?i)(?:\\b(?:2160p|1080p|720p|480p|4k|8k|web[ -]?dl|webrip|bluray|blu[ -]?ray|bdrip|remux|hdr10\\+?|hdr|dv|h[ .-]?26[45]|x26[45]|hevc|avc|aac|dts|truehd|atmos|ddp|itunes|hamiVideo|netflix)\\b)");
     static MovieTitle parse(String file,List<String> ancestors){
         String raw=Normalizer.normalize(file==null?"":file,Normalizer.Form.NFKC);
         raw=raw.replaceFirst("(?i)\\.(mkv|mp4|avi|mov|m4v|ts|m2ts|wmv|webm|flv)$","");
-        boolean tv=EPISODE.matcher(raw).find();String year=year(raw),title=clean(raw);
-        if(title.isEmpty())for(int i=ancestors.size()-1;i>=0;i--){String parent=Normalizer.normalize(ancestors.get(i),Normalizer.Form.NFKC);if(generic(parent))continue;String candidate=clean(parent);if(!candidate.isEmpty()){title=candidate;if(year.isEmpty())year=year(parent);tv|=EPISODE.matcher(parent).find();break;}}
+        boolean episode=EPISODE.matcher(raw).find(),tv=episode;for(String parent:ancestors)if(parent.trim().matches("[（(]?(?:电视剧|漫剧)[）)]?"))tv=true;
+        String year=year(raw),title=clean(raw);
+        boolean dateOnly=raw.matches("^(?:19|20)[0-9]{2}[-_.][0-9]{1,2}(?:[-_.][0-9]{1,2})?(?:[\\[【(].*)?");
+        boolean shortAlias=title.matches("[A-Za-z& ]{1,6}");
+        if(title.isEmpty()||episode||dateOnly||shortAlias)for(int i=ancestors.size()-1;i>=0;i--){String parent=Normalizer.normalize(ancestors.get(i),Normalizer.Form.NFKC);if(generic(parent))continue;String candidate=clean(parent);if(!candidate.isEmpty()&&(!shortAlias||candidate.matches(".*[\\p{IsHan}].*"))){title=candidate;if(year.isEmpty())year=year(parent);tv|=EPISODE.matcher(parent).find();break;}}
         if(title.isEmpty())title="未识别影片";
         return new MovieTitle(title,year,tv);
     }
     private static String year(String s){Matcher m=YEAR.matcher(s);String found="";while(m.find())found=m.group(1);return found;}
-    private static boolean generic(String s){return s.matches("(?i)(?:season\\s*[0-9]+|S[0-9]{1,2}|第.+季|电影|电视剧|剧集|视频|来自分享|分享|个人空间|资源库|备份盘|4k|1080p|2160p)");}
+    private static boolean generic(String s){return s.trim().matches("(?i)(?:season\\s*[0-9]+|S[0-9]{1,2}|第.+季|电影|漫剧|电视剧|剧集|全集|视频|来自分享|分享|个人空间|资源库|备份盘|4k|1080p|2160p)");}
     private static String clean(String s){
         s=s.replaceAll("[|｜]","").replace('_',' ').replace('.',' ');
+        s=s.replaceAll("[\\[【(]\\s*(?:19|20)[0-9]{2}(?:[ ._-][0-9]{1,2}){1,2}\\s*[\\]】)]"," ");
+        s=s.replaceAll("(?i)[\\[【][^\\]】]*(?:字幕组|字幕組|公众号|公眾號)[^\\]】]*[\\]】]"," ");
+        s=s.replaceAll("(?i)[\\[【]\\s*(?:4k|8k|2160p|1080p|720p|hdr|sdr|简中|繁中|中字|双语|国漫|日漫|内嵌)[^\\]】]*[\\]】]"," ");
+        s=s.replaceAll("^[\\s\\[【]+","").replaceFirst("^(?:剧场版|劇場版)\\s*[0-9]{1,3}[: ._-]*","");
         s=s.replaceFirst("^[A-Za-z]\\s*[)）]\\s*","");
         Matcher episode=EPISODE.matcher(s);if(episode.find())s=s.substring(0,episode.start());
         Matcher release=RELEASE.matcher(s);if(release.find())s=s.substring(0,release.start());
+        Matcher attachedQuality=Pattern.compile("(?i)(?<![A-Za-z0-9])(?:2160p|1080p|720p|480p|4k|8k)(?![A-Za-z0-9])").matcher(s);if(attachedQuality.find())s=s.substring(0,attachedQuality.start());
         // A trailing year is useful for querying, but not part of the displayed title.
         Matcher dated=YEAR.matcher(s);int start=-1,end=-1;while(dated.find()){start=dated.start();end=dated.end();}if(start>=0&&(start>0||!s.substring(end).matches(".*[\\p{L}].*")))s=s.substring(0,start)+" "+s.substring(end);
-        s=s.replaceAll("[\\[\\]（）()]", " ").replaceAll("^[\\s-]+|[\\s-]+$","").replaceAll("\\s+"," ").trim();
+        s=s.replaceAll("[\\[\\]（）()「」『』]", " ").replaceAll("\\s+(?:剧场版|劇場版)$", "").replaceAll("^[\\s-]+|[\\s-]+$","").replaceAll("\\s+"," ").trim();
         if(!s.matches("(?:19|20)[0-9]{2}")&&s.matches("(?i)(?:[0-9\\s-]+|S[0-9]+E[0-9]+|3Audio|CHS|CHT|中字|国语|双语)"))return "";
         return s;
     }

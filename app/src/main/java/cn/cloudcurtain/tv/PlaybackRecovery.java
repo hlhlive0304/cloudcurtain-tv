@@ -7,7 +7,7 @@ final class PlaybackRecovery {
     static final long STALL_MS=45000;
     private final boolean addressEnabled,compatibleEnabled;
     private boolean addressUsed,compatibleUsed;
-    PlaybackRecovery(String provider){compatibleEnabled="ALI".equals(provider)||"QUARK".equals(provider);addressEnabled=compatibleEnabled||"TIANYI".equals(provider);}
+    PlaybackRecovery(String provider){compatibleEnabled="ALI".equals(provider)||"QUARK".equals(provider)||"BAIDU".equals(provider);addressEnabled=compatibleEnabled||"TIANYI".equals(provider);}
     boolean error(Throwable error,int code,boolean compatible){
         int status=PlaybackErrors.httpStatus(error);
         if(status==401||status==403||status==404||status==410)return claimAddress();

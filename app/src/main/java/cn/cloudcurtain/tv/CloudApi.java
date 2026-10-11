@@ -94,6 +94,7 @@ public final class CloudApi {
         MediaSpec resolved=media(e,url);return tianyiSession==null?resolved:TianyiPlayback.resolve(resolved);
     }
     public MediaSpec resolveCompatible(Entry e)throws Exception{
+        if(provider==Provider.BAIDU)return BaiduStreams.highest(e,BaiduStreams::available);
         if(provider==Provider.ALI&&UrlRules.video(e.name)){JSONObject token=aliToken();return aliStream(e,token,aliDrive(token));}if(provider!=Provider.QUARK||!UrlRules.video(e.name))throw new IOException("此文件暂不支持在线兼容播放。");
         return quarkStream(e,true);
     }
@@ -146,7 +147,7 @@ public final class CloudApi {
     }
     private MediaSpec media(Entry e,String url)throws Exception{
         url=url.replace("&amp;","&");if(!UrlRules.isWeb(url))throw new IOException("网盘没有返回有效播放地址，可改用官网播放。");
-        MediaSpec m=new MediaSpec(url,e.name);m.provider=provider.name();m.space=provider==Provider.ALI?aliSpace:"";m.key=provider.name()+":"+e.id;m.headers.put("Referer",provider.origin);m.headers.put("User-Agent",provider==Provider.BAIDU?"pan.baidu.com":provider==Provider.QUARK?QUARK_UA:Net.UA);
+        MediaSpec m=new MediaSpec(url,e.name);m.sourceBytes=e.size;m.provider=provider.name();m.space=provider==Provider.ALI?aliSpace:"";m.key=provider.name()+":"+e.id;m.headers.put("Referer",provider.origin);m.headers.put("User-Agent",provider==Provider.BAIDU?"pan.baidu.com":provider==Provider.QUARK?QUARK_UA:Net.UA);
         // Quark's own download hosts can require the web-session cookie. Never send it to an arbitrary returned host.
         if(provider==Provider.QUARK&&provider.allows(url)){
             String cookie=android.webkit.CookieManager.getInstance().getCookie("https://drive.quark.cn/");
@@ -200,6 +201,7 @@ public final class CloudApi {
                 out.add(new Quality(id,m.qualityLabel+" · 在线转码",width,height,m));
             }
         }
+        if(provider==Provider.BAIDU)for(int height:new int[]{1080,720,480}){MediaSpec m=BaiduStreams.spec(entry,height);if(BaiduStreams.available(m))out.add(new Quality(m.quality,m.qualityLabel,0,height,m));}
         Collections.sort(out.subList(1,out.size()),(a,b)->Long.compare((long)b.height*100000000L+(long)b.width*b.height,(long)a.height*100000000L+(long)a.width*a.height));return out;
     }
     public MediaSpec resolveQuality(Entry entry,String id)throws Exception{
@@ -211,7 +213,7 @@ public final class CloudApi {
         String hash=Integer.toHexString((provider.name()+":"+entry.id).hashCode());
         android.content.SharedPreferences prefs=CloudApp.context().getSharedPreferences("progress",0);String chosen=prefs.getString("quality:"+hash,"");
         if(!chosen.isEmpty()&&!"auto".equals(chosen))return resolveQuality(entry,chosen);
-        boolean compatible=(provider==Provider.ALI||provider==Provider.QUARK)&&prefs.getBoolean("compatible:"+hash,false);
+        boolean compatible=(provider==Provider.ALI||provider==Provider.QUARK||provider==Provider.BAIDU)&&prefs.getBoolean("compatible:"+hash,false);
         return compatible?resolveCompatible(entry):resolveQuality(entry,"auto");
     }
 

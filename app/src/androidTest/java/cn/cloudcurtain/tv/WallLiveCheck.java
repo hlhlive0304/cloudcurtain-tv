@@ -11,8 +11,8 @@ final class WallLiveCheck{
    JSONArray films=new JSONArray();SharedPreferences.Editor meta=metadata.edit();
    File dir=new File(c.getCacheDir(),"movie-posters");dir.mkdirs();Bitmap bitmap=Bitmap.createBitmap(720,1080,Bitmap.Config.RGB_565);
    for(int i=0;i<24;i++){bitmap.eraseColor(Color.rgb((i*17)%255,(i*43)%255,(i*79)%255));File file=new File(dir,"wall_stress_"+i+".jpg");try(FileOutputStream out=new FileOutputStream(file)){bitmap.compress(Bitmap.CompressFormat.JPEG,80,out);}fixtures.add(file);}bitmap.recycle();
-   for(int i=0;i<3000;i++){MovieLibrary.Movie m=new MovieLibrary.Movie();m.provider=Provider.QUARK;m.id="wall-stress-"+i;m.name=String.format(Locale.ROOT,"Wall Stress %04d.2020.mkv",i);m.folder="fixture";m.identify();films.put(m.json());MovieMetadata md=new MovieMetadata();md.title=m.title;md.year="2020";md.poster="/wall_stress_"+(i%24)+".jpg";meta.putString("match:"+m.key(),md.json().toString());}
-   meta.commit();SharedPreferences.Editor e=library.edit();for(Provider p:Provider.values())e.putString("items:"+p.name(),p==Provider.QUARK?films.toString():"[]");e.commit();
+   for(int i=0;i<3000;i++){MovieLibrary.Movie m=new MovieLibrary.Movie();m.provider=Provider.QUARK;m.id="wall-stress-"+i;m.name=String.format(Locale.ROOT,"Wall Stress %04d.2020.mkv",i);m.folder="fixture";m.parents.add("电影");m.identify();films.put(m.json());MovieMetadata md=new MovieMetadata();md.title=m.title;md.year="2020";md.poster="/wall_stress_"+(i%24)+".jpg";meta.putString("match:"+m.key(),md.json().toString());}
+   meta.commit();SharedPreferences.Editor e=library.edit();for(Provider p:Provider.values())e.putString("items:"+p.name(),p==Provider.QUARK?films.toString():"[]").putInt("schema:"+p.name(),1);e.commit();
    for(int cycle=0;cycle<6;cycle++){
     wall=(MovieWallActivity)test.startActivitySync(new Intent(c,MovieWallActivity.class).putExtra("provider","QUARK").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     final MovieWallActivity a=wall;Field gf=MovieWallActivity.class.getDeclaredField("grid"),rf=MovieWallActivity.class.getDeclaredField("render");gf.setAccessible(true);rf.setAccessible(true);

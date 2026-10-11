@@ -9,6 +9,9 @@ import java.util.concurrent.TimeUnit;
 /** Public article artwork. Separate HTTP client; no drive cookies or API keys. */
 final class PublicPosters {
     private final OkHttpClient client=new OkHttpClient.Builder().connectTimeout(10,TimeUnit.SECONDS).readTimeout(15,TimeUnit.SECONDS).callTimeout(20,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build();
+    private volatile int cancellation;
+    private static final Object REQUEST_RATE=new Object();private static long lastRequest;
+    private void awaitSlot(int ticket)throws IOException{synchronized(REQUEST_RATE){while(true){if(Thread.currentThread().isInterrupted()||ticket!=cancellation)throw new java.io.InterruptedIOException("已取消封面搜索");long wait=1000-(android.os.SystemClock.elapsedRealtime()-lastRequest);if(wait<=0){lastRequest=android.os.SystemClock.elapsedRealtime();return;}try{REQUEST_RATE.wait(Math.min(250,wait));}catch(InterruptedException e){Thread.currentThread().interrupt();throw new java.io.InterruptedIOException("已取消封面搜索");}}}}
     static boolean imageUrl(String value){
         HttpUrl u=HttpUrl.parse(value);if(u==null||!u.scheme().equals("https")||u.port()!=443||!u.username().isEmpty()||!u.password().isEmpty()||u.query()!=null)return false;return ((u.host().equals("upload.wikimedia.org")||u.host().equals("thumb.wikimedia.org"))&&u.encodedPath().startsWith("/wikipedia/"))||(u.host().matches("img[1-9]\\.doubanio\\.com")&&u.encodedPath().matches("/view/photo/[A-Za-z0-9_-]+/public/p[0-9]+\\.(jpg|webp|png)"));
     }
@@ -38,10 +41,11 @@ final class PublicPosters {
         HttpUrl url=HttpUrl.get("https://movie.douban.com/j/subject_suggest").newBuilder().addQueryParameter("q",title).build();
         try(Response response=client.newCall(new Request.Builder().url(url).header("User-Agent","CloudCurtainTV/0.1.14 (personal movie library)").header("Accept","application/json").build()).execute()){if(!response.isSuccessful()||response.body()==null)throw new IOException("网络封面搜索暂时不可用（HTTP "+response.code()+"）");return parseDouban(new JSONArray(new String(Tmdb.readBounded(response.body().byteStream(),65536),java.nio.charset.StandardCharsets.UTF_8)),television);}
     }
-    void cancelPending(){client.dispatcher().cancelAll();}
+    void cancelPending(){cancellation++;client.dispatcher().cancelAll();}
     List<MovieMetadata> search(String title,String year,boolean television)throws Exception{
-        List<MovieMetadata> found=new ArrayList<>();Exception failure=null;if(title.trim().isEmpty()||title.length()>180)throw new IOException("请输入准确片名");try{for(MovieMetadata m:douban(title,television))if(year.isEmpty()||m.year.equals(year))found.add(m);if(!found.isEmpty())return found;}catch(Exception e){failure=e;}
-        for(String language:new String[]{"zh","en"}){if(Thread.currentThread().isInterrupted())throw new java.io.InterruptedIOException("已取消封面搜索");
+        List<MovieMetadata> found=new ArrayList<>();Exception failure=null;int ticket=cancellation;if(title.trim().isEmpty()||title.length()>180)throw new IOException("请输入准确片名");LinkedHashSet<String> terms=new LinkedHashSet<>();if(year.matches("(?:19|20)[0-9]{2}"))terms.add(title+" "+year);terms.add(title);String head=title.split("[:：\\s]",2)[0];if(head.length()>=2&&head.matches(".*[\\p{IsHan}].*"))terms.add(head);
+        for(String term:terms){awaitSlot(ticket);try{for(MovieMetadata m:douban(term,television))if(year.isEmpty()||m.year.equals(year))found.add(m);if(!found.isEmpty())return found;}catch(IOException e){failure=e;}}
+        for(String language:new String[]{"zh","en"}){if(Thread.currentThread().isInterrupted()||ticket!=cancellation)throw new java.io.InterruptedIOException("已取消封面搜索");
             try(Response response=client.newCall(request(language,title)).execute()){
                 if(!response.isSuccessful()||response.body()==null)throw new IOException("网络封面搜索暂时不可用（HTTP "+response.code()+"）");
                 List<MovieMetadata> pages=parse(new JSONObject(new String(Tmdb.readBounded(response.body().byteStream(),1024*1024),java.nio.charset.StandardCharsets.UTF_8)),television);
