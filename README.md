@@ -2,6 +2,10 @@
 
 Android 6.0+ 电视播放器，为雷鸟 85R675C 等 Android 电视设计。百度、夸克、阿里、天翼在电视内扫码登录，不需要电脑、NAS 或 OpenList 中转。使用同签名 APK 覆盖安装，保留本机账号和设置。本版增加 GitHub 在线更新入口，首次需要覆盖安装；后续从首页或设置中检查更新、下载并由系统确认安装。发布步骤见 ONLINE-UPDATES.md。
 
+[下载 0.1.16-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.16-preview/CloudCurtainTV-0.1.16-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.16-preview)
+
+公开更新清单已上线，模拟器真实下载、校验、系统覆盖安装及配置保留通过。测试网络使用本机已配置代理，电视需能访问 GitHub；详见 [公开发布验收](validation/public-release-0.1.16.md)。首次请覆盖安装，保留已有账号和配置。
+
 ## 本版应用更新
 
 更新清单来自本项目公开仓库，安装包存放于 GitHub Releases。下载后校验 SHA256、包名、版本号与原签名，安装前再复核；拒绝错误安装包、版本倒退及不可信服务器跳转。操作可取消；网络失败时保留当前软件，允许重试。首页、关于、诊断从实际安装包读取版本号。公开版不包含个人配置资产；覆盖安装仍保留已保存的网盘账号和豆包配置。

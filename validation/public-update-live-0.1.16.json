@@ -1,0 +1,12 @@
+{
+  "production_public_feed_latest": true,
+  "bootstrap_version_code": 16,
+  "new_version_offered_from_public_feed": true,
+  "actual_emulator_download_sha256_matches": true,
+  "system_installer_confirmation": true,
+  "system_install_version_code": 17,
+  "encrypted_configuration_preserved": true,
+  "installed_public_apk_matches_tested_release": true,
+  "post_install_latest": true,
+  "status": "PASS"
+}
