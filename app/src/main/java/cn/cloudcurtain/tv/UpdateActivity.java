@@ -32,6 +32,7 @@ public final class UpdateActivity extends Activity {
         download=Ui.button(this,"下载新版",this::download);download.setTag("update_download");actions.addView(download);
         install=Ui.button(this,"安装新版",this::install);install.setTag("update_install");actions.addView(install);
         cancel=Ui.button(this,"取消下载",this::cancel);cancel.setTag("update_cancel");actions.addView(cancel);
+        Button manual=Ui.button(this,"手机扫码下载",this::manual);manual.setTag("update_manual");actions.addView(manual);
         box.addView(Ui.button(this,"返回",this::onBackPressed));updateButtons();check.requestFocus();
     }
     private void ui(Runnable action){runOnUiThread(()->{if(!isFinishing()&&!isDestroyed())action.run();});}
@@ -55,6 +56,18 @@ public final class UpdateActivity extends Activity {
     }
     private void failed(Exception error,String stage){ui(()->{busy=false;status.setText(cancelled?"已取消"+stage+"。":stage+"未完成："+(error instanceof java.io.IOException?error.getMessage():"安装包未通过校验，请重新下载。"));updateButtons();check.requestFocus();});}
     private void cancel(){if(!busy)return;cancelled=true;client.cancel();status.setText("正在取消…");cancel.setEnabled(false);}
+    private void manual(){
+        String url=UpdateManifest.REPOSITORY+"/releases";
+        try{
+            android.graphics.Bitmap bitmap=AliQrPixels.qr(url);LinearLayout box=Ui.column(this);box.setPadding(Ui.dp(this,20),Ui.dp(this,12),Ui.dp(this,20),0);
+            TextView caption=Ui.text(this,"手机扫码进入本项目发布页，下载最新版 APK，再传到电视覆盖安装，可保留账号与设置。",16,Ui.TEXT);box.addView(caption);
+            ImageView qr=new ImageView(this);qr.setImageBitmap(bitmap);qr.setBackgroundColor(android.graphics.Color.WHITE);
+            LinearLayout.LayoutParams size=new LinearLayout.LayoutParams(Ui.dp(this,240),Ui.dp(this,240));size.gravity=android.view.Gravity.CENTER_HORIZONTAL;size.setMargins(0,Ui.dp(this,16),0,Ui.dp(this,12));box.addView(qr,size);
+            AlertDialog dialog=new AlertDialog.Builder(this).setTitle("下载云幕 TV 更新").setView(box).setNegativeButton("关闭",null)
+                .setPositiveButton("电视打开发布页",(d,n)->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}catch(ActivityNotFoundException e){Ui.toast(this,"电视没有浏览器，请用手机扫码。");}}).create();
+            dialog.setOnDismissListener(d->{qr.setImageDrawable(null);bitmap.recycle();});dialog.show();
+        }catch(Exception e){Ui.message(this,"下载发布页",url);}
+    }
     private void install(){
         if(busy||ready==null||release==null)return;
         if(Build.VERSION.SDK_INT>=26&&!getPackageManager().canRequestPackageInstalls()){

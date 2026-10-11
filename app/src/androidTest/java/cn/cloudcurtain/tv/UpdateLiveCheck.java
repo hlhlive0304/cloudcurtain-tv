@@ -32,17 +32,25 @@ final class UpdateLiveCheck {
             if(!result.getBoolean("unpublished_feed_explained"))throw new IOException("Public empty feed was not diagnosed");return;
         }
         File candidate=new File(context.getCacheDir(),"update-fixtures/candidate.apk");if(!candidate.isFile())throw new IOException("Candidate fixture missing");
+        android.content.pm.PackageInfo identity=context.getPackageManager().getPackageArchiveInfo(candidate.getAbsolutePath(),0);if(identity==null)throw new IOException("Candidate identity missing");
+        String apkUrl=UpdateManifest.REPOSITORY+"/releases/download/v"+identity.versionName+"/CloudCurtainTV-"+identity.versionName+".apk";
         MessageDigest digest=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(candidate)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)digest.update(b,0,n);}
-        JSONObject json=new JSONObject().put("schemaVersion",1).put("packageName",UpdateManifest.PACKAGE).put("versionCode",17).put("versionName","0.1.16-preview").put("minSdk",23)
-            .put("apkUrl",UpdateManifest.REPOSITORY+"/releases/download/v0.1.16-preview/CloudCurtainTV-0.1.16-preview.apk").put("apkSize",candidate.length()).put("sha256",UpdateClient.hex(digest.digest())).put("notes","更新流程本机测试：下载、校验、系统确认安装。");
+        JSONObject json=new JSONObject().put("schemaVersion",1).put("packageName",UpdateManifest.PACKAGE).put("versionCode",AppVersion.code(identity)).put("versionName",identity.versionName).put("minSdk",23)
+            .put("apkUrl",apkUrl).put("apkSize",candidate.length()).put("sha256",UpdateClient.hex(digest.digest())).put("notes","更新流程本机测试：下载、校验、系统确认安装。");
         UpdateManifest manifest=UpdateManifest.parse(json.toString());
         ApkVerifier.verify(context,candidate,manifest);result.putBoolean("real_apk_identity_verified",true);
         File wrong=new File(test.getContext().getApplicationInfo().sourceDir);
         JSONObject invalid=new JSONObject(json.toString()).put("apkSize",wrong.length());MessageDigest other=MessageDigest.getInstance("SHA-256");try(InputStream in=new FileInputStream(wrong)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)other.update(b,0,n);}invalid.put("sha256",UpdateClient.hex(other.digest()));
         boolean rejected=false;try{ApkVerifier.verify(context,wrong,UpdateManifest.parse(invalid.toString()));}catch(IOException expected){rejected=true;}if(!rejected)throw new IOException("Wrong package accepted");result.putBoolean("wrong_real_apk_rejected",true);
         UpdateClient fake=new UpdateClient(request->{
-            if(request.url().toString().equals(UpdateManifest.FEED))return reply(request,200,ResponseBody.create(json.toString().getBytes(StandardCharsets.UTF_8),null),null);
-            if(request.url().host().equals("github.com"))return reply(request,302,ResponseBody.create(new byte[0],null),"https://release-assets.githubusercontent.com/fixture/candidate.apk?sig=test");
+            if(request.url().toString().equals(UpdateManifest.API_FEED))return reply(request,200,ResponseBody.create(json.toString().getBytes(StandardCharsets.UTF_8),null),null);
+            if(request.url().toString().equals(manifest.metadataUrl())){
+                try{JSONObject info=new JSONObject().put("draft",false).put("tag_name","v"+identity.versionName).put("assets",new org.json.JSONArray().put(new JSONObject()
+                    .put("id",99).put("url",UpdateManifest.API+"/releases/assets/99").put("browser_download_url",apkUrl).put("size",candidate.length()).put("state","uploaded")));
+                    return reply(request,200,ResponseBody.create(info.toString().getBytes(StandardCharsets.UTF_8),null),null);
+                }catch(Exception e){throw new IOException(e);}
+            }
+            if(UpdateManifest.apiAsset(request.url().toString()))return reply(request,302,ResponseBody.create(new byte[0],null),"https://release-assets.githubusercontent.com/fixture/candidate.apk?sig=test");
             return reply(request,200,body(candidate),null);
         });
         field("client").set(activity,fake);
