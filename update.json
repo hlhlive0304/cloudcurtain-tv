@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "packageName": "cn.cloudcurtain.tv",
+  "versionCode": 17,
+  "versionName": "0.1.16-preview",
+  "minSdk": 23,
+  "apkUrl": "https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.16-preview/CloudCurtainTV-0.1.16-preview.apk",
+  "apkSize": 11478543,
+  "sha256": "8466e5ab6707ba6539b7f8682a3089f2549ef469cb53e48303dc8c78dc4c84ca",
+  "notes": "云幕 TV 0.1.16-preview\n\n新增：首页和设置中的应用更新入口，可检查 GitHub 仓库版本、下载安装包、校验完整性与原签名，再由系统确认安装。支持取消下载与重试；覆盖安装保留账号、进度及已保存的豆包配置。\n修正：首页、关于与诊断页面显示实际安装版本。\n公开发布版不封装个人配置资产或测试账号；此前已保存的个人配置仍保留在电视内。\n\n沿用 0.1.15 的天翼会话/播放地址恢复、夸克兼容线路恢复及字幕、电影墙修正。\n限制：夸克测试账号未开通 SVIP，按账号实际开放画质播放，原画 4K 尚未通过。天翼《复仇者联盟4》Dolby Vision 在模拟器仍解码失败，不能保证雷鸟 85R675C 真机通过。阿里原画对接按用户要求暂缓。\n\n0.1.15 及以前没有更新入口，本次首次需要手动覆盖安装。此后可在 App 内检查更新。"
+}
