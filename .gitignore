@@ -1,0 +1,11 @@
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+.idea/
+work/
+release/
+*.dpapi
+*import-code*
+app/src/main/assets/personal-config.json

@@ -1,0 +1,5 @@
+INSTRUMENTATION_RESULT: playback_wait_stopped=true
+INSTRUMENTATION_RESULT: refresh_budget_already_used=true
+INSTRUMENTATION_RESULT: status=PASS
+INSTRUMENTATION_RESULT: timeout_dialog_visible=true
+INSTRUMENTATION_CODE: -1

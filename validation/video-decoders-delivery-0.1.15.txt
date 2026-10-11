@@ -1,0 +1,11 @@
+INSTRUMENTATION_RESULT: decoder_0_endgame_size=true
+INSTRUMENTATION_RESULT: decoder_0_hardware=false
+INSTRUMENTATION_RESULT: decoder_0_main10_format=false
+INSTRUMENTATION_RESULT: decoder_0_mime=video/hevc
+INSTRUMENTATION_RESULT: decoder_0_name=OMX.google.hevc.decoder
+INSTRUMENTATION_RESULT: decoder_0_profiles=1:65536,4:65536,
+INSTRUMENTATION_RESULT: decoder_0_software=false
+INSTRUMENTATION_RESULT: decoder_0_widths=[2, 4096]
+INSTRUMENTATION_RESULT: decoders=1
+INSTRUMENTATION_RESULT: status=PASS
+INSTRUMENTATION_CODE: -1

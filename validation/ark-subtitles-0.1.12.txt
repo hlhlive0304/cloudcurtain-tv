@@ -1,0 +1,7 @@
+INSTRUMENTATION_RESULT: actual_candidates=1
+INSTRUMENTATION_RESULT: continues_after_subtitle=true
+INSTRUMENTATION_RESULT: real_subtitle_downloaded=true
+INSTRUMENTATION_RESULT: recommendation_dialog=true
+INSTRUMENTATION_RESULT: status=PASS
+INSTRUMENTATION_RESULT: subtitle_selected=true
+INSTRUMENTATION_CODE: -1

@@ -1,0 +1,15 @@
+INSTRUMENTATION_RESULT: default_effect_original=true
+INSTRUMENTATION_RESULT: failed_selection_restores_playback=true
+INSTRUMENTATION_RESULT: highest_available_height=720
+INSTRUMENTATION_RESULT: initial_advances=true
+INSTRUMENTATION_RESULT: original_recovery_included=false
+INSTRUMENTATION_RESULT: paused_switch_stays_paused=true
+INSTRUMENTATION_RESULT: quality_preference_restored=true
+INSTRUMENTATION_RESULT: quality_preserves_position=true
+INSTRUMENTATION_RESULT: resume_advances=true
+INSTRUMENTATION_RESULT: seek_advances=true
+INSTRUMENTATION_RESULT: source_quality_options=3
+INSTRUMENTATION_RESULT: status=PASS
+INSTRUMENTATION_RESULT: two_quality_selections_advance=true
+INSTRUMENTATION_RESULT: voice_effect_actual_state=voice
+INSTRUMENTATION_CODE: -1

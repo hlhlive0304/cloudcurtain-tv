@@ -1,0 +1,4 @@
+INSTRUMENTATION_RESULT: credentials_not_cleared=true
+INSTRUMENTATION_RESULT: stale_cdn_client_rejected=true
+INSTRUMENTATION_RESULT: status=PASS
+INSTRUMENTATION_CODE: -1

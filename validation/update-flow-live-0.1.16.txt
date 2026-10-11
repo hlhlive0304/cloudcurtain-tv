@@ -1,0 +1,9 @@
+INSTRUMENTATION_RESULT: download_and_reverify_passed=true
+INSTRUMENTATION_RESULT: new_version_offered=true
+INSTRUMENTATION_RESULT: other_private_paths_rejected=true
+INSTRUMENTATION_RESULT: private_apk_shared_by_content_uri=true
+INSTRUMENTATION_RESULT: real_apk_identity_verified=true
+INSTRUMENTATION_RESULT: status=PASS
+INSTRUMENTATION_RESULT: system_installer_requested=true
+INSTRUMENTATION_RESULT: wrong_real_apk_rejected=true
+INSTRUMENTATION_CODE: -1

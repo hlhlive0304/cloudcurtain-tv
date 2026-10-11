@@ -1,0 +1,10 @@
+INSTRUMENTATION_RESULT: code_0=CloudLiveInstrumentation.playerSmoke:64
+INSTRUMENTATION_RESULT: code_1=CloudLiveInstrumentation.onStart:636
+INSTRUMENTATION_RESULT: compatible=false
+INSTRUMENTATION_RESULT: error_type=IOException
+INSTRUMENTATION_RESULT: file_mb=72779
+INSTRUMENTATION_RESULT: folders_read=15
+INSTRUMENTATION_RESULT: media_host=media-qhxn-fj-home.qh6oss.ctyunxs.cn
+INSTRUMENTATION_RESULT: stage=start_player
+INSTRUMENTATION_RESULT: status=FAIL
+INSTRUMENTATION_CODE: 0

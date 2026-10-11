@@ -1,0 +1,36 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'cn.cloudcurtain.tv'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    defaultConfig {
+        applicationId 'cn.cloudcurtain.tv'
+        minSdk 23
+        targetSdk 35
+        versionCode 17
+        versionName '0.1.16-preview'
+        testInstrumentationRunner 'cn.cloudcurtain.tv.CloudLiveInstrumentation'
+    }
+    buildTypes { release { minifyEnabled false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    testOptions { unitTests.returnDefaultValues = true; unitTests.includeAndroidResources = true }
+    lint { abortOnError true }
+}
+dependencies {
+    compileOnly 'org.checkerframework:checker-qual:3.43.0'
+    implementation 'androidx.annotation:annotation:1.9.1'
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.media3:media3-exoplayer:1.6.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.6.1'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.6.1'
+    implementation 'androidx.media3:media3-ui:1.6.1'
+    implementation 'androidx.media3:media3-datasource-okhttp:1.6.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
