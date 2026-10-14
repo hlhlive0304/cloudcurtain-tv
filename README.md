@@ -1,8 +1,10 @@
-# 云幕 TV 0.1.18 · 实验预览版
+# 云幕 TV 0.1.19 · 实验预览版
 
 Android 6.0+ 电视播放器，为雷鸟 85R675C 等 Android 电视设计。百度、夸克、阿里、天翼在电视内扫码登录，不需要电脑、NAS 或 OpenList 中转。使用同签名 APK 覆盖安装，保留本机账号和设置。0.1.16 起提供 GitHub 在线更新入口，可从首页或设置中检查更新、下载并由系统确认安装。发布步骤见 ONLINE-UPDATES.md。
 
-[下载 0.1.18-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.18-preview/CloudCurtainTV-0.1.18-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.18-preview)
+[下载 0.1.19-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.19-preview/CloudCurtainTV-0.1.19-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.19-preview)
+
+0.1.19 修复百度同目录字幕读取 HTTP 403：字幕改用当前网页登录会话的正常文件下载流程。已用《希望》的“简中.srt”在模拟器实测完整下载、实际中文显示、时间轴对应、快进、关闭和重新选择；另有真实 ASS 中文字幕显示通过。具体范围见 [0.1.19 验收记录](validation/baidu-subtitles-0.1.19.md)。
 
 0.1.18 修正应用更新检查超时：优先读取 GitHub 官方 API，失败后尝试官方文件线路；安装包同样优先从官方 API 查找对应的 Release 资产，并使用 GitHub 官方存储下载。模拟器直连已读取版本并完整下载、校验公开安装包。旧版若检查更新超时，需要先手动覆盖安装本版，使电视获得新的更新客户端。此前发布的安装包和标签保留，不替换旧版本文件。具体范围见 [0.1.18 验收记录](validation/update-0.1.18.md)。
 

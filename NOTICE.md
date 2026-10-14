@@ -19,6 +19,9 @@
 百度、夸克、阿里、天翼的名称用于标识用户访问的官方服务，不代表官方合作。
 官网、账号权益、风控以及所有接口由相应服务提供商控制。
 
+百度同目录字幕使用官网当前会话的 filemetas、gettemplatevariable 和 download 返回值生成带时效的下载请求，已在本机登录环境核对响应。RC4/Base64 变换独立按标准算法实现，并与 OpenList 公开源码的对应变换交叉核对：
+https://github.com/OpenListTeam/OpenList/blob/main/drivers/terabox/util.go
+
 天翼二维码参数处理对照官方静态资源：
 https://static.e.189.cn/open/login/page/web/v5.0/static/js/App.7bf19c91.js
 夸克网页转码请求的端点、格式参数与返回结构对照官方公开应用脚本（2026-09-23）：

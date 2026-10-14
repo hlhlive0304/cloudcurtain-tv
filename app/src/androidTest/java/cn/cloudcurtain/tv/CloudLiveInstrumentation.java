@@ -106,6 +106,7 @@ public final class CloudLiveInstrumentation extends Instrumentation {
         Bundle result=new Bundle();
         try{
             if(task.startsWith("update_direct_")||task.equals("update_offline_ui")){UpdateDirectLiveCheck.run(this,result,task);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.startsWith("baidu_subtitle_")){BaiduSubtitleLiveCheck.run(this,result,task,keyHash);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if("baidu_folder_inventory".equals(task)){BaiduFolderLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if("baidu_stream_probe".equals(task)){BaiduStreamLiveCheck.run(this,result,keyHash);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if("update_flow".equals(task)||"update_public_feed".equals(task)){UpdateLiveCheck.run(this,result,"update_public_feed".equals(task));result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}

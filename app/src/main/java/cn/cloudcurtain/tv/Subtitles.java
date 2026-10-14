@@ -42,7 +42,7 @@ public final class Subtitles {
         String source=sub.url;MediaSpec scope=null;
         if(source.startsWith("cloud:")){
             if(media==null||media.provider.isEmpty())throw new IOException("没有字幕所属网盘");
-            Provider p=Provider.read(media.provider);CloudApi api=new CloudApi(p);if(p==Provider.ALI)api.selectAliSpace(media.space);scope=api.resolve(new CloudApi.Entry(source.substring(6),sub.label,false,0));source=scope.url;
+            Provider p=Provider.read(media.provider);CloudApi api=new CloudApi(p);if(p==Provider.ALI)api.selectAliSpace(media.space);scope=api.resolveSubtitle(new CloudApi.Entry(source.substring(6),sub.label,false,0));source=scope.url;
         }
         byte[] bytes;
         if(UrlRules.isWeb(source)){if(scope==null)scope=remoteScope(source,media);
