@@ -55,4 +55,26 @@ public class BaiduSubtitleDownloadTest {
         CloudApi quark=new CloudApi(Provider.QUARK,(u,b,h)->{called[0]=u;return new JSONObject("{code:0,data:[{download_url:'https://download.quark.cn/subtitle'}]}");});
         assertEquals("https://download.quark.cn/subtitle",quark.resolveSubtitle(new CloudApi.Entry("file","简中.srt",false,100)).url);assertTrue(called[0].contains("/file/download?"));
     }
+    @Test public void partialDownloadSessionRefreshesOnceAndRetriesTheSameSelectedFile()throws Exception{
+        for(String failed:new String[]{"/api/filemetas","/api/gettemplatevariable","/api/download"}){
+            boolean[] refreshed={false};int[] refreshes={0};List<String> paths=new ArrayList<>();
+            MediaSpec recovered=BaiduSubtitleDownload.resolve(entry(),url->{HttpUrl u=HttpUrl.get(url);paths.add(u.encodedPath());
+                if(u.encodedPath().equals(failed)&&!refreshed[0])return new JSONObject("{errno:-6}");
+                if(u.encodedPath().equals("/api/filemetas")){assertEquals(entry().id,new JSONArray(u.queryParameter("target")).getString(0));return metadata();}
+                return u.encodedPath().equals("/api/gettemplatevariable")?session():link();
+            },()->{refreshes[0]++;refreshed[0]=true;});
+            assertEquals(1,refreshes[0]);assertTrue(BaiduSubtitleDownload.trusted(recovered.url));assertEquals("/api/download",paths.get(paths.size()-1));
+        }
+    }
+    @Test public void expiredSessionDoesNotLoopOrHideOtherDownloadErrors()throws Exception{
+        int[] calls={0},refreshes={0};assertThrows(BaiduSubtitleDownload.SessionUnavailable.class,()->BaiduSubtitleDownload.resolve(entry(),u->{calls[0]++;return new JSONObject("{errno:-6}");},()->refreshes[0]++));
+        assertEquals(2,calls[0]);assertEquals(1,refreshes[0]);refreshes[0]=0;
+        assertThrows(IOException.class,()->BaiduSubtitleDownload.resolve(entry(),u->new JSONObject("{errno:112}"),()->refreshes[0]++));assertEquals(0,refreshes[0]);
+    }
+    @Test public void refreshCannotForwardCookiesToExternalOrInsecureLoginPages()throws Exception{
+        for(String target:Arrays.asList("https://evil.example/login","http://pan.baidu.com/disk/main","https://pan.baidu.com:8443/a")){
+            List<String> calls=new ArrayList<>();assertThrows(IOException.class,()->BaiduWebSession.refresh(url->{calls.add(url);return new okhttp3.Response.Builder().request(new okhttp3.Request.Builder().url(url).build())
+                .protocol(okhttp3.Protocol.HTTP_1_1).code(302).message("redirect").header("Location",target).body(okhttp3.ResponseBody.create(new byte[0],null)).build();}));assertEquals(Collections.singletonList(BaiduQrApi.HOME),calls);
+        }
+    }
 }

@@ -50,7 +50,16 @@ public final class UpdateActivity extends Activity {
     private void download(){
         if(busy||release==null)return;UpdateManifest chosen=release;busy=true;cancelled=false;progress.setProgress(0);progress.setVisibility(android.view.View.VISIBLE);status.setText("正在下载新版…");updateButtons();
         worker.execute(()->{try{
-            File file=client.download(new File(getCacheDir(),"updates"),chosen,()->cancelled,percent->ui(()->{progress.setProgress(percent);status.setText(percent==100?"下载完成，正在校验安装包…":"正在下载："+percent+"% ");}),candidate->ApkVerifier.verify(this,candidate,chosen));
+            File file=client.download(new File(getCacheDir(),"updates"),chosen,()->cancelled,new UpdateClient.Progress(){
+                private long began=SystemClock.elapsedRealtime(),posted,previous;private int percent;
+                public void changed(int value){percent=value;if(value==0){began=SystemClock.elapsedRealtime();previous=0;posted=0;}
+                    ui(()->{progress.setProgress(value);status.setText(value==100?"下载完成，正在校验安装包…":"正在下载："+value+"% · "+client.route());});}
+                public void transferred(long bytes,long size){long now=SystemClock.elapsedRealtime();if(bytes<previous){began=now;posted=0;}previous=bytes;
+                    if(now-posted<500&&bytes!=size)return;posted=now;double seconds=Math.max(.1,(now-began)/1000.0),rate=bytes/seconds;
+                    String detail=String.format(java.util.Locale.ROOT,"正在下载：%d%% · %.1f / %.1f MB · %.0f KB/s",percent,bytes/1048576.0,size/1048576.0,rate/1024);
+                    if(rate>0&&bytes<size)detail+=" · 预计 "+(long)Math.ceil((size-bytes)/rate)+" 秒";String caption=detail;
+                    ui(()->status.setText(bytes==size?"下载完成，正在校验安装包…":caption));}
+            },candidate->ApkVerifier.verify(this,candidate,chosen));
             ui(()->{busy=false;if(cancelled){status.setText("已取消下载。");}else{ready=file;status.setText("安装包校验通过。选择安装新版后，按系统提示确认。");}updateButtons();if(ready!=null)install.requestFocus();});
         }catch(Exception e){failed(e,"下载");}});
     }

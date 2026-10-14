@@ -64,7 +64,7 @@ public final class CloudApi {
     public MediaSpec resolve(Entry e)throws Exception{return resolve(e,true);}
     public MediaSpec resolveOriginal(Entry e)throws Exception{return resolve(e,false);}
     MediaSpec resolveSubtitle(Entry entry)throws Exception{
-        return provider==Provider.BAIDU?BaiduSubtitleDownload.resolve(entry,url->call(url,null)):resolve(entry);
+        return provider==Provider.BAIDU?BaiduSubtitleDownload.resolve(entry,url->transport.request(url,null,Net.headers("Referer",provider.origin,"Origin","https://pan.baidu.com")),BaiduWebSession::refresh):resolve(entry);
     }
     private MediaSpec resolve(Entry e,boolean fallback)throws Exception{
         String url;

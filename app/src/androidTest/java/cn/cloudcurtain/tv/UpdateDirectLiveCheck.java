@@ -45,7 +45,19 @@ final class UpdateDirectLiveCheck {
             if(release==null)throw new IOException("Install a lower version before the public download test");result.putLong("offered_version",release.versionCode);
             File target=new File(c.getCacheDir(),"updates/cloudcurtain-"+release.versionCode+"-"+release.sha256.substring(0,16)+".apk");
             if(target.exists()&&!target.delete())throw new IOException("Unable to remove old update cache");
-            began=SystemClock.elapsedRealtime();test.runOnMainSync(()->a.findViewById(android.R.id.content).findViewWithTag("update_download").performClick());idle(test,a,16*60*1000);
+            began=SystemClock.elapsedRealtime();test.runOnMainSync(()->a.findViewById(android.R.id.content).findViewWithTag("update_download").performClick());
+            if(task.equals("update_direct_cancel")){
+                long end=SystemClock.elapsedRealtime()+45000;boolean[] transferring={false};
+                do{Thread.sleep(200);test.runOnMainSync(()->{String caption=((TextView)a.findViewById(android.R.id.content).findViewWithTag("update_status")).getText().toString();transferring[0]=caption.contains("KB/s")&&caption.contains("预计");});}while(!transferring[0]&&SystemClock.elapsedRealtime()<end);
+                if(!transferring[0]||!client.route().contains("4 路"))throw new IOException("Parallel transfer and speed UI not visible");
+                result.putBoolean("speed_eta_visible",true);
+                android.graphics.Bitmap image=test.getUiAutomation().takeScreenshot();try(FileOutputStream out=new FileOutputStream(new File(c.getFilesDir(),"update-speed.png"))){image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}finally{image.recycle();}
+                long cancelledAt=SystemClock.elapsedRealtime();test.runOnMainSync(()->a.findViewById(android.R.id.content).findViewWithTag("update_cancel").performClick());idle(test,a,10000);
+                test.runOnMainSync(()->text[0]=((TextView)a.findViewById(android.R.id.content).findViewWithTag("update_status")).getText().toString());result.putLong("cancel_ms",SystemClock.elapsedRealtime()-cancelledAt);
+                result.putBoolean("cancel_explained",text[0].contains("已取消下载"));result.putBoolean("partial_removed",!new File(target.getPath()+".part").exists());result.putBoolean("no_installable_file",!target.exists()&&field("ready").get(a)==null);
+                if(!result.getBoolean("cancel_explained")||!result.getBoolean("partial_removed")||!result.getBoolean("no_installable_file"))throw new IOException("Cancellation left an update file");return;
+            }
+            idle(test,a,16*60*1000);
             File ready=(File)field("ready").get(a);if(ready==null){test.runOnMainSync(()->text[0]=((TextView)a.findViewById(android.R.id.content).findViewWithTag("update_status")).getText().toString());throw new IOException("Public download failed: "+text[0]);}
             ApkVerifier.verify(c,ready,release);result.putLong("download_ms",SystemClock.elapsedRealtime()-began);result.putLong("download_bytes",ready.length());result.putString("download_route",client.route());result.putBoolean("fresh_public_download_verified",true);
             if(task.equals("update_direct_install")){

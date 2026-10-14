@@ -9,22 +9,39 @@ import org.json.*;
 /** Small sidecar files use the signed download offered to the current website session. */
 final class BaiduSubtitleDownload {
     interface Request {JSONObject get(String url)throws Exception;}
+    interface Refresh {void run()throws Exception;}
+    static final class SessionUnavailable extends IOException {
+        SessionUnavailable(){super("百度字幕下载会话未通过验证（-6）。请打开百度官网完成验证后，再选择字幕重试。");}
+    }
     static MediaSpec resolve(CloudApi.Entry entry,Request request)throws Exception{
+        return attempt(entry,request);
+    }
+    static MediaSpec resolve(CloudApi.Entry entry,Request request,Refresh refresh)throws Exception{
+        try{return attempt(entry,request);}catch(SessionUnavailable expired){
+            try{refresh.run();}catch(Exception failed){SessionUnavailable error=new SessionUnavailable();error.initCause(failed);throw error;}
+            return attempt(entry,request);
+        }
+    }
+    private static JSONObject checked(JSONObject reply,String step)throws IOException {
+        int errno=reply.optInt("errno",-1);if(errno==-6)throw new SessionUnavailable();
+        if(errno!=0)throw new IOException("百度字幕"+step+"失败（"+errno+"），请稍后重试或进入官网完成验证。");return reply;
+    }
+    private static MediaSpec attempt(CloudApi.Entry entry,Request request)throws Exception{
         if(!entry.id.startsWith("/")||entry.directory||!UrlRules.subtitle(entry.name))throw new IOException("百度字幕文件无效。");
         String target=new JSONArray().put(entry.id).toString();
-        JSONObject metadata=request.get("https://pan.baidu.com/api/filemetas?web=1&target="+Uri.encode(target));
+        JSONObject metadata=checked(request.get("https://pan.baidu.com/api/filemetas?web=1&target="+Uri.encode(target)),"文件查询");
         JSONArray files=metadata.optJSONArray("info");
         if(files==null||files.length()!=1)throw new IOException("百度未返回字幕文件信息。");
         JSONObject file=files.getJSONObject(0);long id=file.optLong("fs_id"),size=file.optLong("size",-1);
         if(file.optInt("errno",0)!=0||file.optInt("isdir",1)!=0||id<=0||!entry.id.equals(file.optString("path")))throw new IOException("百度字幕文件信息与所选文件不一致。");
         if(size<0||size>4*1024*1024)throw new IOException("字幕超过 4 MB 或文件大小无效，已停止读取。");
-        JSONObject variables=request.get("https://pan.baidu.com/api/gettemplatevariable?web=1&fields="+Uri.encode("[\"sign1\",\"sign3\",\"timestamp\",\"bdstoken\"]"));
+        JSONObject variables=checked(request.get("https://pan.baidu.com/api/gettemplatevariable?web=1&fields="+Uri.encode("[\"sign1\",\"sign3\",\"timestamp\",\"bdstoken\"]")),"会话查询");
         JSONObject session=variables.optJSONObject("result");if(session==null)throw new IOException("百度未提供字幕下载会话，请重新登录后重试。");
         String one=session.optString("sign1"),three=session.optString("sign3"),token=session.optString("bdstoken");long timestamp=session.optLong("timestamp");
         if(!ascii(one)||!ascii(three)||token.isEmpty()||token.length()>4096||timestamp<=0)throw new IOException("百度字幕下载会话不完整，请重新登录后重试。");
         String url=Uri.parse("https://pan.baidu.com/api/download").buildUpon().appendQueryParameter("web","1").appendQueryParameter("type","dlink")
             .appendQueryParameter("fidlist","["+id+"]").appendQueryParameter("sign",sign(three,one)).appendQueryParameter("timestamp",String.valueOf(timestamp)).appendQueryParameter("bdstoken",token).build().toString();
-        JSONObject download=request.get(url);JSONArray links=download.optJSONArray("dlink");
+        JSONObject download=checked(request.get(url),"地址获取");JSONArray links=download.optJSONArray("dlink");
         if(links==null||links.length()!=1)throw new IOException("百度未返回字幕下载地址，请重新登录后重试。");
         JSONObject link=links.getJSONObject(0);String address=link.optString("dlink");
         if(link.has("fs_id")&&link.optLong("fs_id")!=id)throw new IOException("百度字幕下载文件不一致。");

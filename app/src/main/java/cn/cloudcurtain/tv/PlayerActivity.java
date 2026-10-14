@@ -314,7 +314,12 @@ public class PlayerActivity extends Activity {
         String[] labels=new String[media.subtitles.size()];for(int i=0;i<labels.length;i++)labels[i]=media.subtitles.get(i).label;
         subtitleSuggestion=new AlertDialog.Builder(this).setTitle("选择网盘字幕").setItems(labels,(d,n)->loadSub(media.subtitles.get(n))).show();
     }
-    private void loadSub(MediaSpec.Sub sub){Ui.toast(this,"正在读取字幕…");worker.execute(()->{try{MediaSpec.Sub cached=new Subtitles(this).cache(sub,media);runOnUiThread(()->attach(cached));}catch(Exception e){runOnUiThread(()->{if(!isFinishing())Ui.message(this,"字幕加载失败",e.getMessage());});}});}
+    private void loadSub(MediaSpec.Sub sub){Ui.toast(this,"正在读取字幕…");worker.execute(()->{try{MediaSpec.Sub cached=new Subtitles(this).cache(sub,media);runOnUiThread(()->attach(cached));}catch(Exception e){runOnUiThread(()->{
+        if(isFinishing())return;
+        if(e instanceof BaiduSubtitleDownload.SessionUnavailable)subtitleSuggestion=new AlertDialog.Builder(this).setTitle("字幕下载需要百度网页验证").setMessage(e.getMessage())
+            .setNegativeButton("知道了",null).setPositiveButton("打开百度官网",(d,n)->startActivity(new android.content.Intent(this,CloudBrowserActivity.class).putExtra("provider",Provider.BAIDU.name()))).show();
+        else Ui.message(this,"字幕加载失败",e.getMessage());
+    });}});}
     private void attach(MediaSpec.Sub sub){attach(sub,true);}
     private void attach(MediaSpec.Sub sub,boolean manual){if(isFinishing())return;closeTranslation();closeOriginalSubtitles();manualOriginalSubtitle=null;manualSubtitle=manual;if(manual)subtitleChoiceRevision++;
         long pos=player==null?position:player.getCurrentPosition();boolean playing=player==null?resumePlay:player.getPlayWhenReady();
