@@ -1,0 +1,14 @@
+buffer-fixture.zip contains an entirely synthetic five-minute HLS stream.
+It has a solid-color background and a generated box, with no movie content or audio.
+Only the separate instrumentation APK includes it; the application APK does not.
+
+Generated with FFmpeg 7.1 and libx264:
+  ffmpeg -f lavfi -i color=c=navy:s=160x90:r=10
+    -vf drawbox=x=mod(t*20\,140):y=30:w=20:h=20:color=lime:t=fill
+    -t 300 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p
+    -g 20 -sc_threshold 0 -an -f hls -hls_time 2 -hls_list_size 0
+    -hls_segment_filename segment-%03d.ts index.m3u8
+
+The ZIP has index.m3u8 and segment-000.ts through segment-149.ts at its root.
+BufferOutageLiveCheck serves them from an IPv4 loopback socket and delays one
+post-start segment read to test refill decisions and playback under a stalled read.

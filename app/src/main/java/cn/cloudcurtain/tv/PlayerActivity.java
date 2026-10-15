@@ -79,7 +79,7 @@ public class PlayerActivity extends Activity {
         view.requestFocus();
     }
     private void init(){if(player!=null||media==null)return;soundMode=getSharedPreferences("settings",0).getString("sound_mode","auto");firstFrame=false;watchdogFailed=false;waitingSince=0;
-        OkHttpDataSource.Factory http=new OkHttpDataSource.Factory(Net.client(media)).setUserAgent(media.headers.containsKey("User-Agent")?media.headers.get("User-Agent"):Net.UA).setTransferListener(playbackStats);
+        OkHttpDataSource.Factory http=new OkHttpDataSource.Factory(PlaybackNetwork.client(media)).setUserAgent(media.headers.containsKey("User-Agent")?media.headers.get("User-Agent"):Net.UA).setTransferListener(playbackStats);
         DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,http);
         player=new ExoPlayer.Builder(this).setRenderersFactory(new androidx.media3.exoplayer.DefaultRenderersFactory(this).setEnableDecoderFallback(true)).setLoadControl(PlaybackBuffer.create(media)).setMediaSourceFactory(new DefaultMediaSourceFactory(data,captions.wrap(new androidx.media3.extractor.DefaultExtractorsFactory(),"main"))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);

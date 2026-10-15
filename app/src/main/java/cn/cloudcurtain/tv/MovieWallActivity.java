@@ -14,7 +14,7 @@ public class MovieWallActivity extends Activity {
     private AlertDialog detailsDialog;private final List<Button> sideButtons=new ArrayList<>();private MovieLibrary library;private Tmdb tmdb;private PosterImages posters;private PosterGrid grid;private TextView status,count;private Button search,scan,previous,next;private int pageIndex=0;private ScrollView scroll;
     private final ExecutorService worker=Executors.newFixedThreadPool(2);
     private final ThreadPoolExecutor metadata=boundedPool(),images=boundedPool();
-    private Future<?> reload;private volatile boolean active;private boolean firstLoad=true;
+    private Future<?> reload;private volatile boolean active;private boolean firstLoad=true,pageLoading;
     private static final int PAGE_SIZE=24;
     private static ThreadPoolExecutor boundedPool(){return new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(16));}
     private List<MovieLibrary.Movie> all=new ArrayList<>();private String query="",category="movie",provider="";private volatile int render=0;private boolean busy=false;private volatile boolean closed=false;private String scanStatus="";private String selected="";private Button activeCategory;private final List<Button> categoryButtons=new ArrayList<>(),filterButtons=new ArrayList<>();
@@ -22,17 +22,29 @@ public class MovieWallActivity extends Activity {
         if(state!=null){query=state.getString("query","");category=state.getString("category","movie");provider=state.getString("provider","");selected=state.getString("selected","");pageIndex=state.getInt("pageIndex",0);}else provider=getIntent().getStringExtra("provider")==null?"":getIntent().getStringExtra("provider");
         LinearLayout root=new AdaptiveLayout.Page(this);root.setBackgroundColor(0xFF171B22);setContentView(root);
         AdaptiveLayout.Flow header=new AdaptiveLayout.Flow(this);root.addView(header,new LinearLayout.LayoutParams(-1,-2));TextView brand=Ui.text(this,"云幕  /  我的影院",25,Ui.TEXT);brand.setTypeface(null,Typeface.BOLD);brand.setPadding(0,0,Ui.dp(this,30),Ui.dp(this,14));header.addView(brand);
-        search=Ui.button(this,"搜索片名",()->search());search.setId(View.generateViewId());header.addView(search);scan=Ui.button(this,"更新影片库",()->scanChoices());header.addView(scan);header.addView(Ui.button(this,"海报设置",()->startActivity(new Intent(this,PosterSettingsActivity.class))));header.addView(Ui.button(this,"返回",this::finish));
+        search=Ui.button(this,"搜索片名",()->search());search.setId(View.generateViewId());header.addView(search);scan=Ui.button(this,"更新影片库",()->scanChoices());scan.setId(View.generateViewId());scan.setTag("wall_scan");header.addView(scan);header.addView(Ui.button(this,"海报设置",()->startActivity(new Intent(this,PosterSettingsActivity.class))));header.addView(Ui.button(this,"返回",this::finish));
         LinearLayout body=Ui.row(this);body.setGravity(Gravity.TOP);root.addView(body,new LinearLayout.LayoutParams(-1,0,1));ScrollView sideScroll=new ScrollView(this);LinearLayout side=Ui.column(this);sideScroll.addView(side);LinearLayout.LayoutParams sideLp=new LinearLayout.LayoutParams(Ui.dp(this,120*Math.min(1.4f,getResources().getConfiguration().fontScale)),-1);sideLp.setMargins(0,Ui.dp(this,8),Ui.dp(this,18),0);body.addView(sideScroll,sideLp);
         String[] names={"全部影片","电影","漫剧","电视剧","继续观看","我的收藏"},values={"all","movie","animation","tv","continue","favorite"};for(int i=0;i<names.length;i++){final String value=values[i];Button b=Ui.button(this,names[i],()->{category=value;show(true);});b.setId(View.generateViewId());b.setTag("category:"+value);b.setTextSize(14);b.setPadding(Ui.dp(this,12),Ui.dp(this,10),Ui.dp(this,12),Ui.dp(this,10));addSide(side,b);categoryButtons.add(b);}
         TextView label=Ui.text(this,"网盘账号",12,Ui.MUTED);label.setPadding(Ui.dp(this,8),Ui.dp(this,20),0,Ui.dp(this,10));side.addView(label);for(Provider p:MovieLibrary.ORDER){Button b=Ui.button(this,p.shortTitle+" · 文件",()->startActivity(new Intent(this,CloudBrowserActivity.class).putExtra("provider",p.name()).putExtra("scan_login",true)));b.setTextSize(13);b.setPadding(Ui.dp(this,10),Ui.dp(this,10),Ui.dp(this,10),Ui.dp(this,10));addSide(side,b);}
         LinearLayout main=Ui.column(this);body.addView(main,new LinearLayout.LayoutParams(0,-1,1));AdaptiveLayout.Flow filters=new AdaptiveLayout.Flow(this);main.addView(filters);Button every=Ui.button(this,"全部网盘",()->{provider="";show(true);});every.setTag("filter:all");every.setId(View.generateViewId());filters.addView(every);filterButtons.add(every);for(Provider p:MovieLibrary.ORDER){Button b=Ui.button(this,p.shortTitle,()->{provider=p.name();show(true);});b.setTag("filter:"+p.name());b.setId(View.generateViewId());filters.addView(b);filterButtons.add(b);}
-        count=Ui.text(this,"",13,Ui.TEXT);count.setPadding(Ui.dp(this,3),0,0,Ui.dp(this,8));LinearLayout pager=Ui.row(this);main.addView(pager);pager.addView(count,new LinearLayout.LayoutParams(0,-2,1));previous=Ui.button(this,"上一页",()->{pageIndex=Math.max(0,pageIndex-1);show(false);scroll.scrollTo(0,0);grid.post(()->{if(grid.getChildAt(0)!=null)grid.getChildAt(0).requestFocus();});});next=Ui.button(this,"下一页",()->{pageIndex++;show(false);scroll.scrollTo(0,0);grid.post(()->{if(grid.getChildAt(0)!=null)grid.getChildAt(0).requestFocus();});});previous.setTextSize(12);next.setTextSize(12);pager.addView(previous);pager.addView(next);status=Ui.text(this,"",12,Ui.MUTED);status.setMaxLines(2);status.setEllipsize(TextUtils.TruncateAt.END);status.setPadding(Ui.dp(this,3),0,0,Ui.dp(this,12));main.addView(status);
+        count=Ui.text(this,"",13,Ui.TEXT);count.setPadding(Ui.dp(this,3),0,0,Ui.dp(this,8));LinearLayout pager=Ui.row(this);main.addView(pager);pager.addView(count,new LinearLayout.LayoutParams(0,-2,1));previous=Ui.button(this,"上一页",()->changePage(-1));next=Ui.button(this,"下一页",()->changePage(1));previous.setId(View.generateViewId());next.setId(View.generateViewId());previous.setTag("wall_previous");next.setTag("wall_next");previous.setTextSize(12);next.setTextSize(12);pager.addView(previous);pager.addView(next);status=Ui.text(this,"",12,Ui.MUTED);status.setMaxLines(2);status.setEllipsize(TextUtils.TruncateAt.END);status.setPadding(Ui.dp(this,3),0,0,Ui.dp(this,12));main.addView(status);
         scroll=new ScrollView(this);scroll.setClipToPadding(false);grid=new PosterGrid(this);grid.topFocus=every.getId();scroll.addView(grid,new ScrollView.LayoutParams(-1,-2));main.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         scroll.getViewTreeObserver().addOnScrollChangedListener(this::loadVisible);
         grid.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->loadVisible());scan.requestFocus();
     }
     private void addSide(LinearLayout side,Button b){LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,Ui.dp(this,8));side.addView(b,lp);sideButtons.add(b);b.setMinHeight(Ui.dp(this,42));b.setMinimumHeight(Ui.dp(this,42));}
+    private void changePage(int delta){if(pageLoading||delta<0&&!previous.isEnabled()||delta>0&&!next.isEnabled())return;pageIndex=Math.max(0,pageIndex+delta);scroll.scrollTo(0,0);show(false);}
+    private Button pagerEntry(){return previous.getVisibility()==View.VISIBLE&&previous.isEnabled()?previous:next.getVisibility()==View.VISIBLE&&next.isEnabled()?next:null;}
+    private void wireFocus(){
+        Button filter=filterButtons.get(0);for(Button button:filterButtons)if(button.getTag().equals("filter:"+(provider.isEmpty()?"all":provider)))filter=button;
+        View first=grid.getChildCount()>0&&grid.getChildAt(0) instanceof PosterCard?grid.getChildAt(0):null;Button pager=pagerEntry();
+        int down=pager!=null?pager.getId():first!=null?first.getId():scan.getId();grid.topFocus=pager!=null?pager.getId():filter.getId();
+        for(Button button:filterButtons){button.setNextFocusDownId(down);button.setNextFocusUpId(scan.getId());}
+        for(Button button:new Button[]{previous,next}){button.setNextFocusUpId(filter.getId());button.setNextFocusDownId(first!=null?first.getId():filter.getId());}
+        previous.setNextFocusRightId(next.isEnabled()?next.getId():previous.getId());previous.setNextFocusLeftId(activeCategory.getId());
+        next.setNextFocusLeftId(previous.isEnabled()?previous.getId():activeCategory.getId());next.setNextFocusRightId(next.getId());
+        scan.setNextFocusDownId(filter.getId());search.setNextFocusDownId(filter.getId());grid.requestLayout();
+    }
     private void search(){LinearLayout box=Ui.column(this);box.setPadding(Ui.dp(this,22),Ui.dp(this,14),Ui.dp(this,22),0);EditText input=Ui.edit(this,"片名 / 原文件名",query,false);box.addView(input);new AlertDialog.Builder(this).setTitle("搜索我的网盘影片").setView(box).setNegativeButton("取消",null).setNeutralButton("清空",(d,n)->{query="";show(true);}).setPositiveButton("搜索",(d,n)->{query=input.getText().toString().trim();show(true);}).show();}
     private void scanChoices(){if(busy){Ui.toast(this,"正在扫描，可继续浏览已找到的影片");return;}new AlertDialog.Builder(this).setTitle("更新影片库").setItems(new String[]{"继续扫描 / 添加影片","重新扫描当前筛选网盘"},(d,n)->scan(n==1)).setNegativeButton("取消",null).show();}
     private void scan(boolean restart){if(busy||closed)return;busy=true;scan.setText("扫描中…");final String filter=provider;worker.execute(()->{
@@ -49,7 +61,7 @@ public class MovieWallActivity extends Activity {
         if(closed||!active)return;if(focusFirst)pageIndex=0;int ticket=++render;
         if(reload!=null)reload.cancel(true);cancelArtwork();
         final String wantedCategory=category,wantedProvider=provider,wantedQuery=query,old=selected;final int wantedPage=pageIndex;
-        status.setText("正在加载影片库…");
+        pageLoading=true;status.setText("正在加载影片库…");
         reload=worker.submit(()->{
             List<MovieLibrary.Movie> loaded=library.movies(),visible=new ArrayList<>();
             Map<String,MovieMetadata> cache=new HashMap<>();String normalized=MovieTitle.normalized(wantedQuery);
@@ -66,17 +78,21 @@ public class MovieWallActivity extends Activity {
             boolean configured=tmdb.configured();int total=visible.size(),page=Math.min(wantedPage,Math.max(0,(total-1)/PAGE_SIZE)),start=page*PAGE_SIZE;
             List<MovieLibrary.Movie> slice=new ArrayList<>(visible.subList(start,Math.min(total,start+PAGE_SIZE)));
             runOnUiThread(()->{
-                if(closed||!active||ticket!=render)return;all=loaded;pageIndex=page;grid.removeAllViews();
+                if(closed||!active||ticket!=render)return;View current=getCurrentFocus();String currentPoster=current instanceof PosterCard?((PosterCard)current).movie.key():"";boolean controlFocused=current!=null&&currentPoster.isEmpty();all=loaded;pageIndex=page;grid.removeAllViews();pageLoading=false;
                 activeCategory=categoryButtons.get(0);for(Button button:categoryButtons){boolean isActive=button.getTag().equals("category:"+category);button.setTextColor(isActive?Ui.ACCENT:Ui.TEXT);if(isActive)activeCategory=button;}grid.leftFocus=activeCategory.getId();
                 for(Button button:filterButtons)button.setTextColor(button.getTag().equals("filter:"+(provider.isEmpty()?"all":provider))?Ui.ACCENT:Ui.TEXT);
                 previous.setVisibility(total>PAGE_SIZE?View.VISIBLE:View.GONE);next.setVisibility(total>PAGE_SIZE?View.VISIBLE:View.GONE);previous.setEnabled(pageIndex>0);next.setEnabled(start+PAGE_SIZE<total);
                 count.setText((provider.isEmpty()?"全部网盘":Provider.read(provider).title)+"  /  "+total+" 部"+(query.isEmpty()?"":"  /  搜索："+query)+(total>PAGE_SIZE?"  ·  第 "+(pageIndex+1)+" / "+((total+PAGE_SIZE-1)/PAGE_SIZE)+" 页":""));search.setText(query.isEmpty()?"搜索片名":"搜索："+query);
                 status.setText(busy?scanStatus:!scanStatus.isEmpty()?scanStatus:all.isEmpty()?"只读取各网盘根目录的电影、漫剧、电视剧三个文件夹。未登录可从左侧扫码。":!configured?"按片名匹配网络封面；可在详情用豆包识别或更换。":"封面 / 简介来自 TMDB · 方向键选择，确定键查看并播放");
                 View focus=null;
-                for(MovieLibrary.Movie movie:slice){PosterCard card=new PosterCard(this,movie,library.position(movie),()->{selected=movie.key();details(movie);});card.cached=cache.get(movie.key());card.metadata(card.cached);grid.addView(card);if(movie.key().equals(old))focus=card;}
+                for(MovieLibrary.Movie movie:slice){PosterCard card=new PosterCard(this,movie,library.position(movie),()->{selected=movie.key();details(movie);});card.cached=cache.get(movie.key());card.metadata(card.cached);grid.addView(card);if(movie.key().equals(currentPoster.isEmpty()?old:currentPoster))focus=card;}
                 if(grid.getChildCount()==0){TextView empty=Ui.text(this,"暂无影片\n\n请确认网盘根目录有电影、漫剧或电视剧文件夹，再更新影片库。",17,Ui.MUTED);empty.setPadding(Ui.dp(this,10),Ui.dp(this,40),0,0);grid.addView(empty);}
-                if(focusFirst)scroll.scrollTo(0,0);
-                if((focusFirst||focus!=null)&&!slice.isEmpty()){View target=focus==null?grid.getChildAt(0):focus;target.post(()->{if(ticket==render)target.requestFocus();});}
+                wireFocus();if(focusFirst)scroll.scrollTo(0,0);
+                View target=null;
+                if(focusFirst&&!slice.isEmpty())target=grid.getChildAt(0);
+                else if(controlFocused){if(current.getVisibility()!=View.VISIBLE||!current.isEnabled())target=pagerEntry()!=null?pagerEntry():filterButtons.get(0);}
+                else if(!slice.isEmpty())target=focus!=null?focus:grid.getChildAt(0);
+                if(target!=null){View destination=target;destination.post(()->{if(ticket==render&&active)destination.requestFocus();});}
                 grid.post(this::loadVisible);
                 if(firstLoad){firstLoad=false;if(loaded.isEmpty()||library.needsMigration())scan(false);}
             });

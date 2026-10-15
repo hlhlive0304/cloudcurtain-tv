@@ -1,8 +1,12 @@
-# 云幕 TV 0.1.20 · 实验预览版
+# 云幕 TV 0.1.21 · 实验预览版
 
 Android 6.0+ 电视播放器，为雷鸟 85R675C 等 Android 电视设计。百度、夸克、阿里、天翼在电视内扫码登录，不需要电脑、NAS 或 OpenList 中转。使用同签名 APK 覆盖安装，保留本机账号和设置。0.1.16 起提供 GitHub 在线更新入口，可从首页或设置中检查更新、下载并由系统确认安装。发布步骤见 ONLINE-UPDATES.md。
 
-[下载 0.1.20-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.20-preview/CloudCurtainTV-0.1.20-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.20-preview)
+[下载 0.1.21-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.21-preview/CloudCurtainTV-0.1.21-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.21-preview)
+
+0.1.21 优化百度网络视频的预读与重试：较早补充缓冲，卡死读取更早重试，保留按电视内存限制的分配上限。在相同的单次 22 秒读取停顿场景中，旧版耗尽缓冲等待约 7.5 秒，新版未出现该次缓冲等待。长片名《无限扭蛋》实际账户影片已在模拟器完成 10 分钟播放、快进及遥控回退；模拟器实际解码的是服务提供的 1080p 兼容流，不能当作雷鸟电视 4K 原画验收。网络仍可能波动，不承诺所有情况均无缓冲。
+
+同时修复电影墙翻页的遥控器焦点：海报第一行按上可进入翻页按钮，左右选择、确定翻页；首页和末页保留有效按钮焦点。刷新后保留当前按钮或海报，单页筛选不会选中隐藏分页按钮。已通过真实影片库 9 页按键测试。详见 [0.1.21 验收记录](validation/baidu-buffer-wall-0.1.21.md)。
 
 0.1.20 增加官方安装包的 4 路分段下载，显示下载速度和预计剩余时间；不支持分段的服务器回到完整下载，所有安装包仍须通过完整摘要和原签名校验。同一个公开安装包在模拟器直连测试中由 288 秒降至 84 秒，实际电视速度随网络变化。提速在安装本版后的更新生效，旧版下载本版这一次仍使用旧下载器。
 

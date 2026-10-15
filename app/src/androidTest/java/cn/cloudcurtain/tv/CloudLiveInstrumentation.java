@@ -105,6 +105,12 @@ public final class CloudLiveInstrumentation extends Instrumentation {
     @Override public void onStart(){
         Bundle result=new Bundle();
         try{
+            if(task.equals("baidu_buffer_inventory")){BaiduBufferLiveCheck.inventory(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.equals("baidu_buffer_probe")){BaiduBufferLiveCheck.probe(this,result,keyHash);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.equals("baidu_buffer_playback")){BaiduBufferLiveCheck.playback(this,result,keyHash,fault.equals("compatible"),180);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.equals("baidu_buffer_soak")){BaiduBufferLiveCheck.playback(this,result,keyHash,fault.equals("compatible"),600);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.equals("baidu_buffer_outage")){BufferOutageLiveCheck.run(this,result,!fault.equals("baseline"));result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.equals("wall_remote_pager")){WallPagerLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("update_direct_range_probe")){UpdateRangeLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.startsWith("update_direct_")||task.equals("update_offline_ui")){UpdateDirectLiveCheck.run(this,result,task);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("baidu_subtitle_session_actual")){BaiduSessionLiveCheck.actual(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
