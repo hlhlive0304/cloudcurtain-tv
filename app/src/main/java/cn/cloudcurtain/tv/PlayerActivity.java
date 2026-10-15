@@ -22,6 +22,7 @@ public class PlayerActivity extends Activity {
     private final List<MediaSpec.Sub> added=new ArrayList<>();private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private long position=0;private boolean resumePlay=true;private float speed=1;private int selectedText=-1;private boolean textDisabled=false;private String pendingSubtitleLabel;
     private final Handler handler=new Handler(Looper.getMainLooper());
+    private Button previousEpisode,nextEpisode;private TextView episodePosition;private EpisodeQueue episodes;private boolean episodeLoading,episodeSwitching;private int episodeFocusDirection;
     private PlaybackRecovery recovery;private long waitingSince;private boolean firstFrame,watchdogFailed;private AlertDialog errorDialog;private AlertDialog playbackPanel;private AlertDialog subtitleSuggestion;
     private final Runnable watchdog=new Runnable(){@Override public void run(){
         if(player==null)return;long now=SystemClock.elapsedRealtime();
@@ -64,7 +65,8 @@ public class PlayerActivity extends Activity {
     @Override public void onCreate(Bundle state){super.onCreate(state);Ui.full(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try{media=MediaSpec.parse(getIntent().getStringExtra("media"));compatiblePlayback=media.compatible;recovery=new PlaybackRecovery(media.provider);}catch(Exception e){finish();return;}
         String skipKey=Integer.toHexString(media.key.hashCode());skipPolicy=new ClipSkipPolicy(getSharedPreferences("clip_skip",0).getInt(skipKey+":intro",0),getSharedPreferences("clip_skip",0).getInt(skipKey+":outro",0));
-        position=state!=null?state.getLong("position"):getSharedPreferences("progress",0).getLong(Integer.toHexString(media.key.hashCode()),0);
+        position=state!=null?state.getLong("position"):getIntent().getBooleanExtra("from_start",false)?0:getSharedPreferences("progress",0).getLong(Integer.toHexString(media.key.hashCode()),0);
+        speed=getIntent().getFloatExtra("speed",1);episodeFocusDirection=getIntent().getIntExtra("episode_direction",0);
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(0xFF000000);setContentView(root);
         view=(PlayerView)getLayoutInflater().inflate(R.layout.tv_player,root,false);view.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);view.setControllerShowTimeoutMs(5000);view.setShowSubtitleButton(false);view.setShowNextButton(false);view.setShowPreviousButton(false);
         root.addView(view,new FrameLayout.LayoutParams(-1,-1));originalSubtitleView=new SubtitleView(this);root.addView(originalSubtitleView,new FrameLayout.LayoutParams(-1,-1));originalSubtitleView.setClickable(false);originalSubtitleView.setFocusable(false);translatedView=new SubtitleView(this);root.addView(translatedView,new FrameLayout.LayoutParams(-1,-1));translatedView.setClickable(false);translatedView.setFocusable(false);
@@ -75,8 +77,50 @@ public class PlayerActivity extends Activity {
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(0,0,Ui.dp(this,6),0);controls.addView(b,lp);
             b.setNextFocusUpId(androidx.media3.ui.R.id.exo_progress);
         }
+        LinearLayout episodeControls=view.findViewById(R.id.episode_controls);episodePosition=view.findViewById(R.id.episode_position);
+        previousEpisode=episodeButton("上一集",-1,episodeControls);nextEpisode=episodeButton("下一集",1,episodeControls);
+        updateEpisodeButtons();loadEpisodes();
         view.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener)visibility->info.setVisibility(visibility));
         view.requestFocus();
+    }
+    private Button episodeButton(String label,int direction,LinearLayout controls){
+        Button button=Ui.button(this,label,()->switchEpisode(direction));button.setId(View.generateViewId());button.setTag(direction<0?"episode_previous":"episode_next");button.setTextSize(14);button.setStateListAnimator(null);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(Ui.dp(this,112),Ui.dp(this,48));lp.setMargins(Ui.dp(this,6),0,0,Ui.dp(this,6));controls.addView(button,lp);return button;
+    }
+    private void updateEpisodeButtons(){
+        if(previousEpisode==null)return;View focused=getCurrentFocus();boolean idle=!episodeLoading&&!episodeSwitching&&!refreshing;
+        previousEpisode.setEnabled(idle&&episodes!=null&&episodes.neighbor(-1)!=null);nextEpisode.setEnabled(idle&&episodes!=null&&episodes.neighbor(1)!=null);
+        previousEpisode.setAlpha(previousEpisode.isEnabled()?1f:.4f);nextEpisode.setAlpha(nextEpisode.isEnabled()?1f:.4f);
+        View first=view.findViewWithTag("player-tab:0"),progress=view.findViewById(androidx.media3.ui.R.id.exo_progress);
+        View entry=previousEpisode.isEnabled()?previousEpisode:nextEpisode.isEnabled()?nextEpisode:first;
+        previousEpisode.setNextFocusUpId(progress.getId());nextEpisode.setNextFocusUpId(progress.getId());previousEpisode.setNextFocusDownId(first.getId());nextEpisode.setNextFocusDownId(first.getId());
+        previousEpisode.setNextFocusRightId(nextEpisode.isEnabled()?nextEpisode.getId():previousEpisode.getId());nextEpisode.setNextFocusLeftId(previousEpisode.isEnabled()?previousEpisode.getId():nextEpisode.getId());
+        progress.setNextFocusDownId(entry.getId());
+        for(int i=0;i<PlaybackPanel.TABS.length;i++)view.findViewWithTag("player-tab:"+i).setNextFocusUpId((i<3&&previousEpisode.isEnabled()?previousEpisode:nextEpisode.isEnabled()?nextEpisode:entry).getId());
+        if((focused==previousEpisode&&!previousEpisode.isEnabled())||(focused==nextEpisode&&!nextEpisode.isEnabled()))entry.requestFocus();
+        if(episodeSwitching)episodePosition.setText("正在切换剧集…");else if(episodeLoading)episodePosition.setText("正在读取剧集…");else if(episodes!=null)episodePosition.setText("第 "+(episodes.index+1)+" / "+episodes.videos.size()+" 个视频");else episodePosition.setText(EpisodeQueue.available(media)?"剧集读取失败 · 更多中重试":"当前来源无剧集目录");
+    }
+    private void loadEpisodes(){
+        if(episodeLoading||episodeSwitching||!EpisodeQueue.available(media)||worker.isShutdown())return;
+        episodeLoading=true;updateEpisodeButtons();final MediaSpec scope=media;Provider provider=Provider.valueOf(scope.provider);int generation=AccountSessions.generation(provider);
+        worker.execute(()->{try{CloudApi api=new CloudApi(provider);if(provider==Provider.ALI)api.selectAliSpace(scope.space);EpisodeQueue loaded=EpisodeQueue.load(scope,api::list);
+            runOnUiThread(()->{if(isFinishing()||generation!=AccountSessions.generation(provider))return;episodeLoading=false;episodes=loaded;updateEpisodeButtons();
+                if(episodeFocusDirection!=0){Button target=episodeFocusDirection>0?nextEpisode:previousEpisode;if(!target.isEnabled())target=episodeFocusDirection>0?previousEpisode:nextEpisode;if(target.isEnabled()){view.showController();target.requestFocus();}episodeFocusDirection=0;}
+            });
+        }catch(Exception e){LoginDiagnostics.record(this,provider,"读取剧集目录",e);runOnUiThread(()->{if(!isFinishing()){episodeLoading=false;episodes=null;updateEpisodeButtons();}});}});
+    }
+    private void switchEpisode(int direction){
+        if(episodes==null||episodeLoading||episodeSwitching||refreshing||!started||worker.isShutdown())return;
+        CloudApi.Entry target=episodes.neighbor(direction);if(target==null)return;
+        episodeSwitching=true;updateEpisodeButtons();view.setControllerShowTimeoutMs(0);view.showController();final MediaSpec scope=media;final EpisodeQueue queue=episodes;Provider provider=Provider.valueOf(scope.provider);int generation=AccountSessions.generation(provider);float playbackSpeed=player==null?speed:player.getPlaybackParameters().speed;
+        worker.execute(()->{try{
+            CloudApi api=new CloudApi(provider);if(provider==Provider.ALI)api.selectAliSpace(scope.space);MediaSpec next=api.resolveSelected(target).inFolder(scope.folder,scope.parents);
+            MovieTitle title=MovieTitle.parse(target.name,scope.parents);next.matchTitle=title.title+" "+title.year;next.subtitles.addAll(queue.subtitles);
+            if(generation!=AccountSessions.generation(provider))throw new java.io.IOException("账号已退出，请重新登录。");
+            runOnUiThread(()->{if(isFinishing())return;episodeSwitching=false;view.setControllerShowTimeoutMs(5000);updateEpisodeButtons();if(!started||generation!=AccountSessions.generation(provider))return;
+                startActivity(new Intent(this,PlayerActivity.class).putExtra("media",next.json()).putExtra("from_start",true).putExtra("speed",playbackSpeed).putExtra("episode_direction",direction));finish();
+            });
+        }catch(Exception e){LoginDiagnostics.record(this,provider,"切换剧集",e);runOnUiThread(()->{if(!isFinishing()){episodeSwitching=false;view.setControllerShowTimeoutMs(5000);updateEpisodeButtons();if(started)Ui.message(this,"切换剧集失败",LoginErrors.friendly(e)+"\n当前视频和播放进度已保留，可重试。");}});}});
     }
     private void init(){if(player!=null||media==null)return;soundMode=getSharedPreferences("settings",0).getString("sound_mode","auto");firstFrame=false;watchdogFailed=false;waitingSince=0;
         OkHttpDataSource.Factory http=new OkHttpDataSource.Factory(PlaybackNetwork.client(media)).setUserAgent(media.headers.containsKey("User-Agent")?media.headers.get("User-Agent"):Net.UA).setTransferListener(playbackStats);
@@ -149,10 +193,10 @@ public class PlayerActivity extends Activity {
     private void refreshAddress(boolean compatible,String quality){
         if(refreshing||player==null)return;
         if(media.provider.isEmpty()||!media.key.startsWith(media.provider+":")){player.prepare();return;}
-        refreshing=true;handler.removeCallbacks(watchdog);long at=player.getCurrentPosition();boolean wasPlaying=player.getPlayWhenReady();position=at;resumePlay=wasPlaying;closeTranslation();closeOriginalSubtitles();player.stop();String id=media.key.substring(media.provider.length()+1);Ui.toast(this,"正在重新获取播放地址…");
+        if(episodeSwitching)return;refreshing=true;updateEpisodeButtons();handler.removeCallbacks(watchdog);long at=player.getCurrentPosition();boolean wasPlaying=player.getPlayWhenReady();position=at;resumePlay=wasPlaying;closeTranslation();closeOriginalSubtitles();player.stop();String id=media.key.substring(media.provider.length()+1);Ui.toast(this,"正在重新获取播放地址…");
         worker.execute(()->{try{CloudApi api=playbackApi();CloudApi.Entry entry=new CloudApi.Entry(id,media.title,false,media.sourceBytes);MediaSpec fresh=compatible?api.resolveCompatible(entry):api.resolveQuality(entry,quality==null?media.quality:quality);if(quality!=null&&quality.equals("auto")&&!fresh.compatible){fresh.quality="auto";fresh.qualityLabel="原文件 · 自动最高";}for(MediaSpec.Sub sub:media.subtitles)if(sub.url.startsWith("cloud:"))fresh.subtitles.add(sub);
-            runOnUiThread(()->{refreshing=false;if(isFinishing())return;if(errorDialog!=null)errorDialog.dismiss();if(player!=null){sound.close();view.setPlayer(null);player.release();player=null;}fresh.matchTitle=media.matchTitle;fresh.sourceWidth=media.sourceWidth;fresh.sourceHeight=media.sourceHeight;for(MediaSpec.Sub sub:media.subtitles)if(sub.sameFile&&SubtitlePolicy.exactChinese(fresh.subtitles)==null)fresh.subtitles.add(sub);compatiblePlayback=fresh.compatible;media=fresh;fileInfoRead=false;getIntent().putExtra("media",media.json());getSharedPreferences("progress",0).edit().putBoolean("compatible:"+Integer.toHexString(media.key.hashCode()),media.compatible).putString("quality:"+Integer.toHexString(media.key.hashCode()),media.quality).apply();position=at;resumePlay=wasPlaying;if(started)init();});
-        }catch(Exception e){LoginDiagnostics.record(this,Provider.read(media.provider),"重新获取播放地址",e);runOnUiThread(()->{refreshing=false;if(!isFinishing()){if(started&&player!=null){setItem(at,wasPlaying);ensureOriginalSubtitles();handler.removeCallbacks(watchdog);handler.postDelayed(watchdog,1000);}Ui.message(this,"获取地址失败",LoginErrors.friendly(e)+"\n已保留原播放来源和进度。");}});}});
+            runOnUiThread(()->{refreshing=false;if(isFinishing())return;if(errorDialog!=null)errorDialog.dismiss();if(player!=null){sound.close();view.setPlayer(null);player.release();player=null;}fresh.inFolder(media.folder,media.parents);fresh.matchTitle=media.matchTitle;fresh.sourceWidth=media.sourceWidth;fresh.sourceHeight=media.sourceHeight;for(MediaSpec.Sub sub:media.subtitles)if(sub.sameFile&&SubtitlePolicy.exactChinese(fresh.subtitles)==null)fresh.subtitles.add(sub);compatiblePlayback=fresh.compatible;media=fresh;fileInfoRead=false;getIntent().putExtra("media",media.json());updateEpisodeButtons();getSharedPreferences("progress",0).edit().putBoolean("compatible:"+Integer.toHexString(media.key.hashCode()),media.compatible).putString("quality:"+Integer.toHexString(media.key.hashCode()),media.quality).apply();position=at;resumePlay=wasPlaying;if(started)init();});
+        }catch(Exception e){LoginDiagnostics.record(this,Provider.read(media.provider),"重新获取播放地址",e);runOnUiThread(()->{refreshing=false;if(!isFinishing()){updateEpisodeButtons();if(started&&player!=null){setItem(at,wasPlaying);ensureOriginalSubtitles();handler.removeCallbacks(watchdog);handler.postDelayed(watchdog,1000);}Ui.message(this,"获取地址失败",LoginErrors.friendly(e)+"\n已保留原播放来源和进度。");}});}});
     }
     private void setItem(long pos,boolean play){
         if(player==null)return;MediaItem.Builder b=new MediaItem.Builder().setUri(Uri.parse(media.url)).setMediaId(media.key).setMediaMetadata(new MediaMetadata.Builder().setTitle(media.title).build());
@@ -288,6 +332,7 @@ public class PlayerActivity extends Activity {
         choices.add(new PlaybackPanel.Choice("字幕字号",false,this::subtitleSize));
         choices.add(new PlaybackPanel.Choice("跳过片头 / 片尾",false,this::skipMenu));
         choices.add(new PlaybackPanel.Choice("重新获取地址",false,()->refreshAddress(compatiblePlayback)));
+        if(EpisodeQueue.available(media))choices.add(new PlaybackPanel.Choice("重新读取剧集",false,this::loadEpisodes));
         if(supportsRecovery())choices.add(new PlaybackPanel.Choice(compatiblePlayback?"切回原文件":"切换兼容播放",false,()->refreshAddress(!compatiblePlayback,compatiblePlayback?"original":null)));
         choices.add(new PlaybackPanel.Choice("播放诊断",false,this::playbackDiagnostics));
         choices.add(new PlaybackPanel.Choice("字幕与设置",false,()->startActivity(new Intent(this,SettingsActivity.class).putExtra("focus_doubao",true))));
@@ -346,6 +391,7 @@ public class PlayerActivity extends Activity {
     }}
     @Override public boolean dispatchKeyEvent(KeyEvent event){
         int key=event.getKeyCode();if(key==KeyEvent.KEYCODE_MENU){if(event.getAction()==KeyEvent.ACTION_DOWN){view.showController();view.findViewWithTag("player-tab:0").requestFocus();}return true;}
+        if(key==KeyEvent.KEYCODE_MEDIA_NEXT||key==KeyEvent.KEYCODE_MEDIA_PREVIOUS){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0)switchEpisode(key==KeyEvent.KEYCODE_MEDIA_NEXT?1:-1);return true;}
         if(player!=null&&!view.isControllerFullyVisible()&&(key==KeyEvent.KEYCODE_DPAD_LEFT||key==KeyEvent.KEYCODE_DPAD_RIGHT)){
             if(event.getAction()==KeyEvent.ACTION_DOWN){if(key==KeyEvent.KEYCODE_DPAD_LEFT)player.seekBack();else player.seekForward();}return true;
         }return super.dispatchKeyEvent(event);

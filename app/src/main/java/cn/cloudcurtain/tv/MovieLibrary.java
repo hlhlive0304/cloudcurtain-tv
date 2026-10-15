@@ -92,7 +92,7 @@ final class MovieLibrary {
     }
     MediaSpec resolve(Movie m,boolean fromStart)throws Exception{
         int generation=AccountSessions.generation(m.provider);CloudApi api=new CloudApi(m.provider);if(m.provider==Provider.ALI)api.selectAliSpace(m.space);
-        MediaSpec media=api.resolveSelected(m.entry());media.matchTitle=m.title+" "+m.year;media.subtitles.addAll(m.subtitles);
+        MediaSpec media=api.resolveSelected(m.entry()).inFolder(m.folder,m.parents);media.matchTitle=m.title+" "+m.year;media.subtitles.addAll(m.subtitles);
         if(generation!=AccountSessions.generation(m.provider))throw new IOException("账号已退出，请重新登录并扫描。");
         SharedPreferences.Editor edit=context.getSharedPreferences("progress",0).edit().putBoolean("compatible:"+Integer.toHexString(media.key.hashCode()),media.compatible);if(fromStart)edit.remove(Integer.toHexString(media.key.hashCode()));edit.apply();return media;
     }
