@@ -19,6 +19,7 @@
         <activity android:name=".CloudBrowserActivity" android:screenOrientation="landscape" android:exported="false" />
         <activity android:name=".CloudFilesActivity" android:screenOrientation="landscape" android:exported="false" />
         <activity android:name=".MovieWallActivity" android:screenOrientation="landscape" android:exported="false" />
+        <activity android:name=".HistoryActivity" android:screenOrientation="landscape" android:exported="false" />
         <activity android:name=".PosterSettingsActivity" android:screenOrientation="landscape" android:exported="false" />
         <activity android:name=".SettingsActivity" android:screenOrientation="landscape" android:exported="false" />
         <activity android:name=".UpdateActivity" android:screenOrientation="landscape" android:exported="false" />

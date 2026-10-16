@@ -23,6 +23,15 @@ public class PlayerActivity extends Activity {
     private long position=0;private boolean resumePlay=true;private float speed=1;private int selectedText=-1;private boolean textDisabled=false;private String pendingSubtitleLabel;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private Button previousEpisode,nextEpisode;private TextView episodePosition;private EpisodeQueue episodes;private boolean episodeLoading,episodeSwitching;private int episodeFocusDirection;
+    private Provider historyOwner;private int historyEpoch;private long lastHistoryPosition=-1;private boolean lastHistoryCompleted;
+    private final Runnable historyTick=new Runnable(){@Override public void run(){if(!started)return;recordHistory();handler.postDelayed(this,10000);}};
+    private void recordHistory(){
+        if(player==null||!firstFrame||historyOwner!=null&&historyEpoch!=AccountSessions.generation(historyOwner))return;
+        long at=player.getCurrentPosition();boolean ended=player.getPlaybackState()==Player.STATE_ENDED;if(!ended&&at<1000||at==lastHistoryPosition&&ended==lastHistoryCompleted)return;
+        try{PlaybackHistory.Entry entry=PlaybackHistory.snapshot(media,at,player.getDuration(),ended,System.currentTimeMillis());lastHistoryPosition=at;lastHistoryCompleted=ended;
+            PlaybackHistory.IO.execute(()->{if(historyOwner!=null&&historyEpoch!=AccountSessions.generation(historyOwner))return;try{new PlaybackHistory(getApplicationContext()).save(entry);}catch(Exception error){LoginDiagnostics.record(this,historyOwner,"保存播放记录",error);}});
+        }catch(Exception error){LoginDiagnostics.record(this,historyOwner,"保存播放记录",error);}
+    }
     private PlaybackRecovery recovery;private long waitingSince;private boolean firstFrame,watchdogFailed;private AlertDialog errorDialog;private AlertDialog playbackPanel;private AlertDialog subtitleSuggestion;
     private final Runnable watchdog=new Runnable(){@Override public void run(){
         if(player==null)return;long now=SystemClock.elapsedRealtime();
@@ -62,10 +71,12 @@ public class PlayerActivity extends Activity {
             .setPositiveButton(offerCompatible?"切换兼容播放":"重新获取地址",(d,n)->refreshAddress(offerCompatible||compatiblePlayback)).setNegativeButton("返回文件",(d,n)->finish()).setNeutralButton("关闭",null).show();
     }
     public static void open(Context c,MediaSpec media){c.startActivity(new Intent(c,PlayerActivity.class).putExtra("media",media.json()));}
+    static void openAt(Context c,MediaSpec media,long position){c.startActivity(new Intent(c,PlayerActivity.class).putExtra("media",media.json()).putExtra("resume_position",Math.max(0,position)));}
     @Override public void onCreate(Bundle state){super.onCreate(state);Ui.full(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try{media=MediaSpec.parse(getIntent().getStringExtra("media"));compatiblePlayback=media.compatible;recovery=new PlaybackRecovery(media.provider);}catch(Exception e){finish();return;}
+        try{historyOwner=Provider.valueOf(media.provider);historyEpoch=AccountSessions.generation(historyOwner);}catch(IllegalArgumentException ignored){}
         String skipKey=Integer.toHexString(media.key.hashCode());skipPolicy=new ClipSkipPolicy(getSharedPreferences("clip_skip",0).getInt(skipKey+":intro",0),getSharedPreferences("clip_skip",0).getInt(skipKey+":outro",0));
-        position=state!=null?state.getLong("position"):getIntent().getBooleanExtra("from_start",false)?0:getSharedPreferences("progress",0).getLong(Integer.toHexString(media.key.hashCode()),0);
+        position=state!=null?state.getLong("position"):getIntent().hasExtra("resume_position")?Math.max(0,getIntent().getLongExtra("resume_position",0)):getIntent().getBooleanExtra("from_start",false)?0:getSharedPreferences("progress",0).getLong(Integer.toHexString(media.key.hashCode()),0);
         speed=getIntent().getFloatExtra("speed",1);episodeFocusDirection=getIntent().getIntExtra("episode_direction",0);
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(0xFF000000);setContentView(root);
         view=(PlayerView)getLayoutInflater().inflate(R.layout.tv_player,root,false);view.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING);view.setControllerShowTimeoutMs(5000);view.setShowSubtitleButton(false);view.setShowNextButton(false);view.setShowPreviousButton(false);
@@ -142,7 +153,7 @@ public class PlayerActivity extends Activity {
                 watchdogFailed=true;showFailure(PlaybackErrors.describe(e,e.getErrorCodeName()),supportsRecovery()&&!compatiblePlayback);
             }
             @Override public void onRenderedFirstFrame(){firstFrame=true;}
-            @Override public void onPlaybackStateChanged(int s){if(s==Player.STATE_ENDED)getSharedPreferences("progress",0).edit().remove(Integer.toHexString(media.key.hashCode())).apply();}
+            @Override public void onPlaybackStateChanged(int s){if(s==Player.STATE_ENDED){getSharedPreferences("progress",0).edit().remove(Integer.toHexString(media.key.hashCode())).apply();recordHistory();}}
         });if(!textDisabled&&selectedText>=0&&selectedText<added.size())pendingSubtitleLabel=added.get(selectedText).label;setItem(position,resumePlay);ensureFileSubtitles();ensureOriginalSubtitles();handler.removeCallbacks(skipCheck);handler.postDelayed(skipCheck,500);if(UrlRules.isWeb(media.url)){handler.removeCallbacks(watchdog);handler.postDelayed(watchdog,1000);}
     }
     private boolean refreshing,compatiblePlayback,started;private boolean manualSubtitle,fileInfoRead,subtitleAutoLoading;private int subtitleChoiceRevision;
@@ -397,8 +408,9 @@ public class PlayerActivity extends Activity {
         }return super.dispatchKeyEvent(event);
     }
     @Override public void onBackPressed(){if(view!=null&&view.isControllerFullyVisible())view.hideController();else super.onBackPressed();}
-    @Override protected void onStart(){super.onStart();started=true;init();}
-    @Override protected void onStop(){started=false;closeTranslation();closeOriginalSubtitles();handler.removeCallbacks(watchdog);if(errorDialog!=null)errorDialog.dismiss();if(playbackPanel!=null)playbackPanel.dismiss();if(subtitleSuggestion!=null)subtitleSuggestion.dismiss();if(player!=null){position=player.getCurrentPosition();resumePlay=player.getPlayWhenReady();speed=player.getPlaybackParameters().speed;
+    @Override protected void onStart(){super.onStart();started=true;init();handler.removeCallbacks(historyTick);handler.postDelayed(historyTick,10000);}
+    @Override protected void onPause(){recordHistory();super.onPause();}
+    @Override protected void onStop(){recordHistory();started=false;closeTranslation();closeOriginalSubtitles();handler.removeCallbacks(historyTick);handler.removeCallbacks(watchdog);if(errorDialog!=null)errorDialog.dismiss();if(playbackPanel!=null)playbackPanel.dismiss();if(subtitleSuggestion!=null)subtitleSuggestion.dismiss();if(player!=null){position=player.getCurrentPosition();resumePlay=player.getPlayWhenReady();speed=player.getPlaybackParameters().speed;
         if(player.getPlaybackState()!=Player.STATE_ENDED)getSharedPreferences("progress",0).edit().putLong(Integer.toHexString(media.key.hashCode()),position).apply();
         sound.close();view.setPlayer(null);player.release();player=null;
     }super.onStop();}

@@ -105,6 +105,9 @@ public final class CloudLiveInstrumentation extends Instrumentation {
     @Override public void onStart(){
         Bundle result=new Bundle();
         try{
+            if(task.equals("history_cloud_sources")){HistoryLiveCheck.cloudSources(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.equals("history_record")){HistoryLiveCheck.record(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
+            if(task.equals("history_resume")){HistoryLiveCheck.resume(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("episode_navigation")){EpisodeNavigationLiveCheck.run(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("baidu_buffer_inventory")){BaiduBufferLiveCheck.inventory(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("baidu_buffer_probe")){BaiduBufferLiveCheck.probe(this,result,keyHash);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}

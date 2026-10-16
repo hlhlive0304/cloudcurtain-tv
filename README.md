@@ -1,8 +1,10 @@
-# 云幕 TV 0.1.22 · 实验预览版
+# 云幕 TV 0.1.23 · 实验预览版
 
 Android 6.0+ 电视播放器，为雷鸟 85R675C 等 Android 电视设计。百度、夸克、阿里、天翼在电视内扫码登录，不需要电脑、NAS 或 OpenList 中转。使用同签名 APK 覆盖安装，保留本机账号和设置。0.1.16 起提供 GitHub 在线更新入口，可从首页或设置中检查更新、下载并由系统确认安装。发布步骤见 ONLINE-UPDATES.md。
 
-[下载 0.1.22-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.22-preview/CloudCurtainTV-0.1.22-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.22-preview)
+[下载 0.1.23-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.23-preview/CloudCurtainTV-0.1.23-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.23-preview)
+
+0.1.23 在首页增加“历史播放记录”和最近三条观看卡片，显示片名、集数、网盘和进度，确定后继续播放。完整列表保留最近 100 条，可用菜单键从头播放或移除记录，也可清空列表。播放时每 10 秒、退出和播完时保存；已看完的影片从头播放。网盘记录只保留文件引用，续播时重新获取地址；本地视频和视频直链也可记录。记录加密保存在电视本机，退出某个网盘时移除其对应记录。本机影片索引能对应的旧进度会补回并标记“较早记录”，没有日期的旧进度不会编造观看时间。详见 [0.1.23 验收记录](validation/playback-history-0.1.23.md)。
 
 0.1.22 在播放页进度条下方增加“上一集 / 下一集”，遥控器菜单键显示控制栏，在底部设置入口按上进入切集按钮，左右选择、确定切换。同一文件夹内的视频按文件名的数字顺序排列（第 2 集在第 10 集之前），读取完整分页，不受文件页当前筛选和排序影响。文件列表和电影墙均支持；第一集、最后一集和单文件目录会禁用无效方向。切集保存当前视频进度，目标视频从头播放，字幕重新按目标文件加载，倍速保留；返回键回到选片页面。片尾仍由用户手动切集。真实百度漫剧 12 集已在模拟器验证前后切换、首尾边界、字幕状态、地址刷新和返回电影墙。详见 [0.1.22 验收记录](validation/episode-navigation-0.1.22.md)。
 

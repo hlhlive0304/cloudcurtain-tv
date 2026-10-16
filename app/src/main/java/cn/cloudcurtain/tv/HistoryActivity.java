@@ -1,0 +1,19 @@
+package cn.cloudcurtain.tv;
+import android.app.*;import android.os.Bundle;import android.view.*;import android.widget.*;import java.util.*;
+
+public class HistoryActivity extends Activity {
+    private LinearLayout rows;private TextView status;private HistoryOpener opener;private int revision;private boolean closed;private List<PlaybackHistory.Entry> displayed=Collections.emptyList();
+    @Override public void onCreate(Bundle state){super.onCreate(state);opener=new HistoryOpener(this);LinearLayout page=Ui.page(this,"历史播放记录","选择影片继续观看 · 菜单键可从头播放或移除记录 · 最近 100 条");
+        AdaptiveLayout.Flow bar=new AdaptiveLayout.Flow(this);page.addView(bar);Button back=Ui.button(this,"返回首页",this::finish);back.setId(View.generateViewId());back.setTag("history_back");bar.addView(back);Button clear=Ui.button(this,"清空记录",()->new AlertDialog.Builder(this).setTitle("清空播放记录？").setMessage("清空后，历史列表将不再显示这些影片。再次播放会重新记录。").setNegativeButton("取消",null).setPositiveButton("清空",(d,n)->mutate(null)).show());clear.setId(View.generateViewId());clear.setTag("history_clear");bar.addView(clear);
+        status=Ui.text(this,"正在读取播放记录…",14,Ui.MUTED);status.setPadding(0,0,0,Ui.dp(this,12));page.addView(status);ScrollView scroll=new ScrollView(this);rows=Ui.column(this);scroll.addView(rows);page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));back.requestFocus();}
+    @Override protected void onResume(){super.onResume();load();}
+    private void load(){int ticket=++revision;PlaybackHistory.IO.execute(()->{try{List<PlaybackHistory.Entry> entries=new PlaybackHistory(this).entries();runOnUiThread(()->{if(closed||ticket!=revision)return;String focus=getCurrentFocus()==null?"":String.valueOf(getCurrentFocus().getTag());rows.removeAllViews();status.setText(entries.isEmpty()?"还没有播放记录。开始观看影片后，会自动记录进度。":"共 "+entries.size()+" 条 · 按最近观看排序");View restore=null;
+            displayed=entries;for(PlaybackHistory.Entry entry:entries){HistoryCard card=new HistoryCard(this,entry,false,()->opener.open(entry,false,status));card.setOnLongClickListener(v->{actions(entry);return true;});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=Ui.dp(this,10);rows.addView(card,lp);if(focus.equals(card.getTag()))restore=card;}
+            if(restore!=null)restore.requestFocus();else if(focus.startsWith("history:"))findViewById(android.R.id.content).findViewWithTag("history_back").requestFocus();
+        });}catch(Exception error){runOnUiThread(()->{if(!closed&&ticket==revision)status.setText("播放记录读取失败，可返回后重试。");});}});}
+    private void actions(PlaybackHistory.Entry entry){AlertDialog menu=new AlertDialog.Builder(this).setTitle(entry.title()).setItems(new String[]{"继续播放","从头播放","移除记录"},(d,n)->{if(n==2)mutate(entry.id());else opener.open(entry,n==1,status);}).setNegativeButton("取消",null).create();menu.setOnShowListener(d->{menu.getListView().requestFocus();menu.getListView().setSelection(0);});menu.show();}
+    private void mutate(String id){PlaybackHistory.IO.execute(()->{try{PlaybackHistory history=new PlaybackHistory(this);if(id==null)history.clear();else history.remove(id);runOnUiThread(()->{if(!closed)load();});}catch(Exception error){runOnUiThread(()->{if(!closed)Ui.message(this,"记录未修改","保存失败，请重试。");});}});}
+    @Override public boolean dispatchKeyEvent(KeyEvent event){if(event.getKeyCode()==KeyEvent.KEYCODE_MENU&&getCurrentFocus() instanceof HistoryCard){if(event.getAction()==KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0)for(PlaybackHistory.Entry entry:displayed)if(("history:"+entry.id()).equals(getCurrentFocus().getTag())){actions(entry);break;}return true;}return super.dispatchKeyEvent(event);}
+    @Override protected void onStop(){revision++;super.onStop();}
+    @Override protected void onDestroy(){closed=true;revision++;opener.close();super.onDestroy();}
+}
