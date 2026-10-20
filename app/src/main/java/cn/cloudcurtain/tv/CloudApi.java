@@ -101,6 +101,12 @@ public final class CloudApi {
         if(provider==Provider.ALI&&UrlRules.video(e.name)){JSONObject token=aliToken();return aliStream(e,token,aliDrive(token));}if(provider!=Provider.QUARK||!UrlRules.video(e.name))throw new IOException("此文件暂不支持在线兼容播放。");
         return quarkStream(e,true);
     }
+    static final class LowQualityException extends IOException {
+        LowQualityException(int width,int height){super("夸克当前只提供 "+width+" × "+height+" 的低清兼容线路，未自动降低画质。原片和播放进度已保留，可重试当前画质或手动选择其他清晰度。");}
+    }
+    MediaSpec resolveAutomaticCompatible(Entry entry)throws Exception{
+        return provider==Provider.QUARK?quarkStream(entry,true,true):resolveCompatible(entry);
+    }
     public static final class FilePlaybackInfo {
         public int width,height;public final List<MediaSpec.Sub> subtitles=new ArrayList<>();
     }
@@ -159,6 +165,9 @@ public final class CloudApi {
         return m;
     }
     private MediaSpec quarkStream(Entry entry,boolean compatible)throws Exception{
+        return quarkStream(entry,compatible,false);
+    }
+    private MediaSpec quarkStream(Entry entry,boolean compatible,boolean requireHd)throws Exception{
         JSONObject j=call("https://drive-pc.quark.cn/1/clouddrive/file/v2/play?pr=ucpro&fr=pc",new JSONObject().put("fid",entry.id).put("resolutions",compatible?"low,normal,high,super":"low,normal,high,super,2k,4k").put("supports","fmp4,m3u8"));
         JSONObject data=j.optJSONObject("data");JSONArray list=data==null?null:data.optJSONArray("video_list");String best="";long pixels=-1;int chosenWidth=0,chosenHeight=0;
         if(list!=null)for(int i=0;i<list.length();i++){
@@ -167,7 +176,9 @@ public final class CloudApi {
             if(compatible&&(info.optLong("width",0)>1920||info.optLong("height",0)>1080))continue;
             if(item.optBoolean("accessable",true)&&info.optBoolean("success",true)&&info.optBoolean("finish",true)&&UrlRules.isWeb(url)&&score>pixels){best=url;pixels=score;chosenWidth=info.optInt("width");chosenHeight=info.optInt("height");}
         }
-        if(best.isEmpty())throw new IOException("夸克没有提供可用的在线播放地址，请在官网确认该视频已完成转码及账号播放权限。");MediaSpec selected=media(entry,best);selected.compatible=compatible;selected.quality="compatible";selected.qualityLabel=resolutionLabel(chosenWidth,chosenHeight)+" · 在线转码";return selected;
+        if(best.isEmpty())throw new IOException("夸克没有提供可用的在线播放地址，请在官网确认该视频已完成转码及账号播放权限。");
+        if(requireHd&&chosenWidth<1280&&chosenHeight<720)throw new LowQualityException(chosenWidth,chosenHeight);
+        MediaSpec selected=media(entry,best);selected.compatible=compatible;selected.quality="compatible";selected.qualityLabel=resolutionLabel(chosenWidth,chosenHeight)+" · 在线转码";return selected;
     }
 
     public static final class Quality {
@@ -208,7 +219,10 @@ public final class CloudApi {
         Collections.sort(out.subList(1,out.size()),(a,b)->Long.compare((long)b.height*100000000L+(long)b.width*b.height,(long)a.height*100000000L+(long)a.width*a.height));return out;
     }
     public MediaSpec resolveQuality(Entry entry,String id)throws Exception{
-        if("compatible".equals(id))return resolveCompatible(entry);if("original".equals(id))return resolveOriginal(entry);if(id.isEmpty()||"auto".equals(id)){MediaSpec chosen=resolve(entry);if(!chosen.compatible){chosen.quality="auto";chosen.qualityLabel="自动 · 原文件";}return chosen;}
+        if("compatible".equals(id))return resolveCompatible(entry);if("original".equals(id))return resolveOriginal(entry);if(id.isEmpty()||"auto".equals(id)){MediaSpec chosen;
+            if(provider==Provider.QUARK){try{chosen=resolveOriginal(entry);}catch(IOException original){chosen=resolveAutomaticCompatible(entry);}}
+            else chosen=resolve(entry);
+            if(!chosen.compatible){chosen.quality="auto";chosen.qualityLabel="自动 · 原文件";}return chosen;}
         for(Quality quality:qualities(entry))if(quality.id.equals(id)&&quality.spec!=null)return quality.spec;
         throw new IOException("该清晰度当前不可用，请重新选择。");
     }

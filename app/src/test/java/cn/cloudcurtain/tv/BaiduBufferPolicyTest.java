@@ -16,7 +16,8 @@ public class BaiduBufferPolicyTest {
     private LoadControl.Parameters params(long milliseconds,boolean rebuffering){return new LoadControl.Parameters(PlayerId.UNSET,Timeline.EMPTY,new MediaPeriodId(new Object()),0,milliseconds*1000,1,true,rebuffering,C.TIME_UNSET,C.TIME_UNSET);}
     private DefaultLoadControl prepared(MediaSpec media){DefaultLoadControl control=PlaybackBuffer.create(media,64L*1024*1024);control.onPrepared(PlayerId.UNSET);return control;}
     @Test public void refillsBeforeReserveFallsBelowATransientNetworkDelay(){
-        DefaultLoadControl baidu=prepared(spec("BAIDU")),other=prepared(spec("QUARK"));
+        MediaSpec compatible=spec("QUARK");compatible.compatible=true;
+        DefaultLoadControl baidu=prepared(spec("BAIDU")),other=prepared(compatible);
         assertFalse(baidu.shouldContinueLoading(params(181000,false)));assertTrue(baidu.shouldContinueLoading(params(45000,false)));
         assertFalse(other.shouldContinueLoading(params(61000,false)));assertFalse(other.shouldContinueLoading(params(45000,false)));assertTrue(other.shouldContinueLoading(params(14000,false)));
     }

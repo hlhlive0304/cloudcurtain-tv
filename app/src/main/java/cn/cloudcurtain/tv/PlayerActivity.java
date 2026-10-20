@@ -33,13 +33,16 @@ public class PlayerActivity extends Activity {
         }catch(Exception error){LoginDiagnostics.record(this,historyOwner,"保存播放记录",error);}
     }
     private PlaybackRecovery recovery;private long waitingSince;private boolean firstFrame,watchdogFailed;private AlertDialog errorDialog;private AlertDialog playbackPanel;private AlertDialog subtitleSuggestion;
+    private boolean hevcBase;private volatile boolean baseLayerApplied;private String videoDecoder="";
     private final Runnable watchdog=new Runnable(){@Override public void run(){
         if(player==null)return;long now=SystemClock.elapsedRealtime();
         boolean waiting=player.getPlayWhenReady()&&(player.getPlaybackState()==Player.STATE_BUFFERING||(!firstFrame&&player.getPlaybackState()==Player.STATE_READY));
         if(!waiting||refreshing)waitingSince=0;else if(waitingSince==0)waitingSince=now;
         else if(!watchdogFailed&&(firstFrame||now-playbackStats.lastByteTime>=15000||now-waitingSince>=120000)&&now-waitingSince>=(supportsRecovery()&&!compatiblePlayback&&firstFrame&&"auto".equals(media.quality)?15000:PlaybackRecovery.STALL_MS)){
             watchdogFailed=true;LoginDiagnostics.record(PlayerActivity.this,Provider.read(media.provider),"播放等待超时",new java.util.concurrent.TimeoutException());
-            if(recovery.stalled(now-waitingSince,"auto".equals(media.quality)&&!compatiblePlayback,firstFrame)&&!"original".equals(media.quality)){if(!compatiblePlayback&&supportsRecovery()){Ui.toast(PlayerActivity.this,"原文件缓冲慢，自动模式切换网盘兼容线路；可手动选回原画");refreshAddress(true);}else recoverAutomatically();return;}
+            PlaybackRecovery.Action action=recovery.onStall(now-waitingSince,media,firstFrame);
+            if(action==PlaybackRecovery.Action.REFRESH){recoverAutomatically();return;}
+            if(action==PlaybackRecovery.Action.COMPATIBLE){refreshAddress(true,null,true);return;}
             player.pause();showFailure("视频长时间没有出画面，请重新获取播放地址或返回文件。",!compatiblePlayback&&supportsRecovery());
         }
         handler.postDelayed(this,1000);
@@ -68,14 +71,15 @@ public class PlayerActivity extends Activity {
     private void showFailure(String message,boolean offerCompatible){
         if(isFinishing()||errorDialog!=null&&errorDialog.isShowing())return;
         errorDialog=new AlertDialog.Builder(this).setTitle("播放未成功").setMessage(message+(offerCompatible?"\n可切换网盘提供的在线转码视频（按账号实际提供的画质），保留当前进度。":""))
-            .setPositiveButton(offerCompatible?"切换兼容播放":"重新获取地址",(d,n)->refreshAddress(offerCompatible||compatiblePlayback)).setNegativeButton("返回文件",(d,n)->finish()).setNeutralButton("关闭",null).show();
+            .setPositiveButton("重试当前画质",(d,n)->{recovery=new PlaybackRecovery(media.provider);if(player!=null)player.setPlayWhenReady(true);refreshAddress(compatiblePlayback);}).setNegativeButton("返回文件",(d,n)->finish())
+            .setNeutralButton(hasHevcBase()?"原片解码":offerCompatible?"选择其他画质":"关闭",(d,n)->{if(hasHevcBase())decodeMenu();else if(offerCompatible)qualityMenu();}).show();
     }
     public static void open(Context c,MediaSpec media){c.startActivity(new Intent(c,PlayerActivity.class).putExtra("media",media.json()));}
     static void openAt(Context c,MediaSpec media,long position){c.startActivity(new Intent(c,PlayerActivity.class).putExtra("media",media.json()).putExtra("resume_position",Math.max(0,position)));}
     @Override public void onCreate(Bundle state){super.onCreate(state);Ui.full(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try{media=MediaSpec.parse(getIntent().getStringExtra("media"));compatiblePlayback=media.compatible;recovery=new PlaybackRecovery(media.provider);}catch(Exception e){finish();return;}
         try{historyOwner=Provider.valueOf(media.provider);historyEpoch=AccountSessions.generation(historyOwner);}catch(IllegalArgumentException ignored){}
-        String skipKey=Integer.toHexString(media.key.hashCode());skipPolicy=new ClipSkipPolicy(getSharedPreferences("clip_skip",0).getInt(skipKey+":intro",0),getSharedPreferences("clip_skip",0).getInt(skipKey+":outro",0));
+        String skipKey=Integer.toHexString(media.key.hashCode());hevcBase=getSharedPreferences("progress",0).getBoolean("hevc_base:"+skipKey,false);skipPolicy=new ClipSkipPolicy(getSharedPreferences("clip_skip",0).getInt(skipKey+":intro",0),getSharedPreferences("clip_skip",0).getInt(skipKey+":outro",0));
         position=state!=null?state.getLong("position"):getIntent().hasExtra("resume_position")?Math.max(0,getIntent().getLongExtra("resume_position",0)):getIntent().getBooleanExtra("from_start",false)?0:getSharedPreferences("progress",0).getLong(Integer.toHexString(media.key.hashCode()),0);
         speed=getIntent().getFloatExtra("speed",1);episodeFocusDirection=getIntent().getIntExtra("episode_direction",0);
         FrameLayout root=new FrameLayout(this);root.setBackgroundColor(0xFF000000);setContentView(root);
@@ -133,23 +137,26 @@ public class PlayerActivity extends Activity {
             });
         }catch(Exception e){LoginDiagnostics.record(this,provider,"切换剧集",e);runOnUiThread(()->{if(!isFinishing()){episodeSwitching=false;view.setControllerShowTimeoutMs(5000);updateEpisodeButtons();if(started)Ui.message(this,"切换剧集失败",LoginErrors.friendly(e)+"\n当前视频和播放进度已保留，可重试。");}});}});
     }
-    private void init(){if(player!=null||media==null)return;soundMode=getSharedPreferences("settings",0).getString("sound_mode","auto");firstFrame=false;watchdogFailed=false;waitingSince=0;
+    private void init(){if(player!=null||media==null)return;soundMode=getSharedPreferences("settings",0).getString("sound_mode","auto");firstFrame=false;watchdogFailed=false;waitingSince=0;videoDecoder="";baseLayerApplied=false;playbackStats.reset();
         OkHttpDataSource.Factory http=new OkHttpDataSource.Factory(PlaybackNetwork.client(media)).setUserAgent(media.headers.containsKey("User-Agent")?media.headers.get("User-Agent"):Net.UA).setTransferListener(playbackStats);
         DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,http);
-        player=new ExoPlayer.Builder(this).setRenderersFactory(new androidx.media3.exoplayer.DefaultRenderersFactory(this).setEnableDecoderFallback(true)).setLoadControl(PlaybackBuffer.create(media)).setMediaSourceFactory(new DefaultMediaSourceFactory(data,captions.wrap(new androidx.media3.extractor.DefaultExtractorsFactory(),"main"))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();
+        player=new ExoPlayer.Builder(this).setRenderersFactory(new androidx.media3.exoplayer.DefaultRenderersFactory(this).setEnableDecoderFallback(true)).setLoadControl(PlaybackBuffer.create(media)).setMediaSourceFactory(new DefaultMediaSourceFactory(data,captions.wrap(VideoDecode.wrap(new androidx.media3.extractor.DefaultExtractorsFactory(),hevcBase,()->baseLayerApplied=true),"main"))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();
+        player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener(){@Override public void onVideoDecoderInitialized(EventTime time,String name,long timestamp,long duration){videoDecoder=name;}});
         player.setAudioAttributes(new AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),true);
         player.setHandleAudioBecomingNoisy(true);view.setPlayer(player);player.setPlaybackSpeed(speed);
         player.setTrackSelectionParameters(player.getTrackSelectionParameters().buildUpon().setPreferredTextLanguage("zh").setForceHighestSupportedBitrate(true).setViewportSize(Integer.MAX_VALUE,Integer.MAX_VALUE,false).setTrackTypeDisabled(C.TRACK_TYPE_TEXT,textDisabled).build());
         player.addListener(new Player.Listener(){
             @Override public void onTracksChanged(Tracks tracks){
-                if(PlaybackVideo.unsupported(tracks)){if(refreshing)return;if(supportsRecovery()&&!compatiblePlayback&&!"original".equals(media.quality)&&recovery.error(null,PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,false)){refreshAddress(true);return;}player.pause();watchdogFailed=true;handler.removeCallbacks(watchdog);showFailure("当前设备的解码器不支持这条视频轨道。4K 分辨率与 Dolby Vision / HEVC 的编码支持是两件事，可选择网盘提供的兼容画质。",supportsRecovery()&&!compatiblePlayback);return;}
+                if(PlaybackVideo.unsupported(tracks)){if(refreshing)return;if(recovery.onError(null,PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,media)==PlaybackRecovery.Action.COMPATIBLE){refreshAddress(true,null,true);return;}player.pause();watchdogFailed=true;handler.removeCallbacks(watchdog);showFailure("当前设备的解码器不支持这条视频轨道。可在“更多 → 原片解码”中检查是否能使用 HEVC 基础层；4K 分辨率需要设备支持相应编码。",supportsRecovery()&&!compatiblePlayback);return;}
                 applyAudio(tracks);applySubtitles(tracks);
             }
             @Override public void onAudioSessionIdChanged(int id){audioSession=id;updateSound();}
             @Override public void onPlayerError(PlaybackException e){
-                if(isFinishing())return;
+                if(isFinishing()||refreshing)return;
                 Provider p=media.provider.isEmpty()?null:Provider.read(media.provider);LoginDiagnostics.record(PlayerActivity.this,p,"播放视频",e);
-                if(recovery.error(e,e.errorCode,compatiblePlayback)){if(!compatiblePlayback&&PlaybackErrors.httpStatus(e)==0&&!"original".equals(media.quality)){Ui.toast(PlayerActivity.this,"原文件暂不可解码，自动模式切换兼容播放");refreshAddress(true);return;}if(PlaybackErrors.httpStatus(e)>0){recoverAutomatically();return;}}
+                PlaybackRecovery.Action action=recovery.onError(e,e.errorCode,media);
+                if(action==PlaybackRecovery.Action.COMPATIBLE){refreshAddress(true,null,true);return;}
+                if(action==PlaybackRecovery.Action.REFRESH){recoverAutomatically();return;}
                 watchdogFailed=true;showFailure(PlaybackErrors.describe(e,e.getErrorCodeName()),supportsRecovery()&&!compatiblePlayback);
             }
             @Override public void onRenderedFirstFrame(){firstFrame=true;}
@@ -202,12 +209,15 @@ public class PlayerActivity extends Activity {
     private void closeOriginalSubtitles(){if(originalSubtitles!=null){originalSubtitles.close();originalSubtitles=null;}}
     private void refreshAddress(boolean compatible){refreshAddress(compatible,null);}
     private void refreshAddress(boolean compatible,String quality){
+        refreshAddress(compatible,quality,false);
+    }
+    private void refreshAddress(boolean compatible,String quality,boolean automatic){
         if(refreshing||player==null)return;
         if(media.provider.isEmpty()||!media.key.startsWith(media.provider+":")){player.prepare();return;}
         if(episodeSwitching)return;refreshing=true;updateEpisodeButtons();handler.removeCallbacks(watchdog);long at=player.getCurrentPosition();boolean wasPlaying=player.getPlayWhenReady();position=at;resumePlay=wasPlaying;closeTranslation();closeOriginalSubtitles();player.stop();String id=media.key.substring(media.provider.length()+1);Ui.toast(this,"正在重新获取播放地址…");
-        worker.execute(()->{try{CloudApi api=playbackApi();CloudApi.Entry entry=new CloudApi.Entry(id,media.title,false,media.sourceBytes);MediaSpec fresh=compatible?api.resolveCompatible(entry):api.resolveQuality(entry,quality==null?media.quality:quality);if(quality!=null&&quality.equals("auto")&&!fresh.compatible){fresh.quality="auto";fresh.qualityLabel="原文件 · 自动最高";}for(MediaSpec.Sub sub:media.subtitles)if(sub.url.startsWith("cloud:"))fresh.subtitles.add(sub);
+        worker.execute(()->{try{CloudApi api=playbackApi();CloudApi.Entry entry=new CloudApi.Entry(id,media.title,false,media.sourceBytes);MediaSpec fresh=compatible?(automatic?api.resolveAutomaticCompatible(entry):api.resolveCompatible(entry)):api.resolveQuality(entry,quality==null?media.quality:quality);if(quality!=null&&quality.equals("auto")&&!fresh.compatible){fresh.quality="auto";fresh.qualityLabel="原文件 · 自动最高";}for(MediaSpec.Sub sub:media.subtitles)if(sub.url.startsWith("cloud:"))fresh.subtitles.add(sub);
             runOnUiThread(()->{refreshing=false;if(isFinishing())return;if(errorDialog!=null)errorDialog.dismiss();if(player!=null){sound.close();view.setPlayer(null);player.release();player=null;}fresh.inFolder(media.folder,media.parents);fresh.matchTitle=media.matchTitle;fresh.sourceWidth=media.sourceWidth;fresh.sourceHeight=media.sourceHeight;for(MediaSpec.Sub sub:media.subtitles)if(sub.sameFile&&SubtitlePolicy.exactChinese(fresh.subtitles)==null)fresh.subtitles.add(sub);compatiblePlayback=fresh.compatible;media=fresh;fileInfoRead=false;getIntent().putExtra("media",media.json());updateEpisodeButtons();getSharedPreferences("progress",0).edit().putBoolean("compatible:"+Integer.toHexString(media.key.hashCode()),media.compatible).putString("quality:"+Integer.toHexString(media.key.hashCode()),media.quality).apply();position=at;resumePlay=wasPlaying;if(started)init();});
-        }catch(Exception e){LoginDiagnostics.record(this,Provider.read(media.provider),"重新获取播放地址",e);runOnUiThread(()->{refreshing=false;if(!isFinishing()){updateEpisodeButtons();if(started&&player!=null){setItem(at,wasPlaying);ensureOriginalSubtitles();handler.removeCallbacks(watchdog);handler.postDelayed(watchdog,1000);}Ui.message(this,"获取地址失败",LoginErrors.friendly(e)+"\n已保留原播放来源和进度。");}});}});
+        }catch(Exception e){LoginDiagnostics.record(this,Provider.read(media.provider),"重新获取播放地址",e);runOnUiThread(()->{refreshing=false;if(!isFinishing()){updateEpisodeButtons();if(e instanceof CloudApi.LowQualityException){watchdogFailed=true;resumePlay=false;showFailure(e.getMessage(),true);return;}if(started&&player!=null){watchdogFailed=false;waitingSince=0;setItem(at,wasPlaying);ensureOriginalSubtitles();handler.removeCallbacks(watchdog);handler.postDelayed(watchdog,1000);}Ui.message(this,"获取地址失败",LoginErrors.friendly(e)+"\n已保留原播放来源和进度。");}});}});
     }
     private void setItem(long pos,boolean play){
         if(player==null)return;MediaItem.Builder b=new MediaItem.Builder().setUri(Uri.parse(media.url)).setMediaId(media.key).setMediaMetadata(new MediaMetadata.Builder().setTitle(media.title).build());
@@ -335,13 +345,32 @@ public class PlayerActivity extends Activity {
 
     private void playbackDiagnostics(){
         if(player==null)return;Format format=player.getVideoFormat();long ahead=Math.max(0,player.getBufferedPosition()-player.getCurrentPosition());
-        Ui.message(this,"播放诊断","来源："+media.qualityLabel+"\n实际分辨率："+(format==null?"尚未读取":format.width+" × "+format.height)+"\n编码："+(format==null?"尚未读取":Objects.toString(format.sampleMimeType,"未知"))+"\n最近视频下载："+String.format(Locale.ROOT,"%.2f",playbackStats.recentBytesPerSecond()*8/1000000.0)+" Mbps\n原文件平均码率："+(PlaybackBuffer.averageBitsPerSecond(media,player.getDuration())==0?"未知 / 在线转码":String.format(Locale.ROOT,"%.1f Mbps",PlaybackBuffer.averageBitsPerSecond(media,player.getDuration())/1000000.0))+"\n已缓冲："+ahead/1000+" 秒\n已下载："+playbackStats.bytes/1048576+" MB\n缓冲内存上限："+PlaybackBuffer.targetBytes(Runtime.getRuntime().maxMemory(),media)/1048576+" MB\n以上为当前视频线路数据，不是家庭宽带测速。");
+        Ui.message(this,"播放诊断","来源："+media.qualityLabel+"\n实际分辨率："+(format==null?"尚未读取":format.width+" × "+format.height)+"\n编码："+(format==null?"尚未读取":Objects.toString(format.sampleMimeType,"未知"))+"\n解码器："+(videoDecoder.isEmpty()?"尚未启动":videoDecoder)+"\n解码方式："+(baseLayerApplied?"HEVC 基础层（非完整杜比视界）":hevcBase?"HEVC 基础层已选，当前轨道未转换":"自动")+"\n画面首帧："+(firstFrame?"已显示":"尚未显示")+"\n最近视频下载："+String.format(Locale.ROOT,"%.2f",playbackStats.recentBytesPerSecond()*8/1000000.0)+" Mbps\n原文件平均码率："+(PlaybackBuffer.averageBitsPerSecond(media,player.getDuration())==0?"未知 / 在线转码":String.format(Locale.ROOT,"%.1f Mbps",PlaybackBuffer.averageBitsPerSecond(media,player.getDuration())/1000000.0))+"\n已缓冲："+ahead/1000+" 秒\n已下载："+playbackStats.bytes/1048576+" MB\n缓冲内存上限："+PlaybackBuffer.targetBytes(Runtime.getRuntime().maxMemory(),media)/1048576+" MB\n以上为当前视频线路数据，不是家庭宽带测速。");
+    }
+    private boolean hasHevcBase(){
+        if(hevcBase)return true;if(player==null)return false;
+        for(Tracks.Group group:player.getCurrentTracks().getGroups())if(group.getType()==C.TRACK_TYPE_VIDEO)for(int i=0;i<group.length;i++)if(VideoDecode.hasHevcBase(group.getTrackFormat(i)))return true;
+        return false;
+    }
+    private void decodeMenu(){
+        List<PlaybackPanel.Choice> choices=new ArrayList<>();
+        choices.add(new PlaybackPanel.Choice("自动解码 · 保留杜比视界",!hevcBase,()->changeDecode(false)));
+        if(hasHevcBase())choices.add(new PlaybackPanel.Choice("HEVC 基础层 · 保留原分辨率",hevcBase,()->changeDecode(true)));
+        playbackPanel=PlaybackPanel.show(this,"原片解码","默认自动。HEVC 基础层仅用于兼容的杜比视界视频，保留原片分辨率和进度，但不保留完整杜比视界效果。仍需要设备支持该分辨率的 HEVC 解码；其他编码不受影响。",choices);
+    }
+    private void changeDecode(boolean enabled){
+        if(player==null||refreshing||episodeSwitching||hevcBase==enabled)return;
+        position=player.getCurrentPosition();resumePlay=true;speed=player.getPlaybackParameters().speed;
+        closeTranslation();closeOriginalSubtitles();sound.close();view.setPlayer(null);player.release();player=null;
+        hevcBase=enabled;recovery=new PlaybackRecovery(media.provider);getSharedPreferences("progress",0).edit().putBoolean("hevc_base:"+Integer.toHexString(media.key.hashCode()),enabled).apply();
+        if(started)init();Ui.toast(this,enabled?"已切换 HEVC 基础层，保持原片分辨率":"已恢复自动解码");
     }
     private void menu(){
         List<PlaybackPanel.Choice> choices=new ArrayList<>();
         choices.add(new PlaybackPanel.Choice("画面比例",false,()->new AlertDialog.Builder(this).setTitle("画面比例").setItems(new String[]{"适应屏幕","填满屏幕（拉伸）","裁切填满"},(x,i)->view.setResizeMode(new int[]{AspectRatioFrameLayout.RESIZE_MODE_FIT,AspectRatioFrameLayout.RESIZE_MODE_FILL,AspectRatioFrameLayout.RESIZE_MODE_ZOOM}[i])).show()));
         choices.add(new PlaybackPanel.Choice("字幕字号",false,this::subtitleSize));
         choices.add(new PlaybackPanel.Choice("跳过片头 / 片尾",false,this::skipMenu));
+        choices.add(new PlaybackPanel.Choice("原片解码",false,this::decodeMenu));
         choices.add(new PlaybackPanel.Choice("重新获取地址",false,()->refreshAddress(compatiblePlayback)));
         if(EpisodeQueue.available(media))choices.add(new PlaybackPanel.Choice("重新读取剧集",false,this::loadEpisodes));
         if(supportsRecovery())choices.add(new PlaybackPanel.Choice(compatiblePlayback?"切回原文件":"切换兼容播放",false,()->refreshAddress(!compatiblePlayback,compatiblePlayback?"original":null)));

@@ -13,6 +13,20 @@ import static org.junit.Assert.*;
 
 @RunWith(RobolectricTestRunner.class) @Config(sdk=28)
 public class CloudPlaybackRegressionTest {
+    @Test public void quarkAutoDoesNotSilentlyDowngradeToLowDefinition()throws Exception{
+        CloudApi api=new CloudApi(Provider.QUARK,(u,b,h)->{
+            if(u.contains("/file/download?"))throw new Net.ServiceException(400,"32003");
+            return new JSONObject("{code:0,data:{video_list:[{accessable:true,video_info:{url:'https://video.quark.cn/low.mp4',width:480,height:202}},{accessable:false,video_info:{url:'https://video.quark.cn/4k.mp4',width:3840,height:1608}}]}}");
+        });CloudApi.Entry entry=new CloudApi.Entry("movie","test.mkv",false,500);
+        assertThrows(CloudApi.LowQualityException.class,()->api.resolveQuality(entry,"auto"));
+        assertThrows(CloudApi.LowQualityException.class,()->api.resolveAutomaticCompatible(entry));
+        // Manual selection remains available; the user sees the actual resolution.
+        MediaSpec manual=api.resolveCompatible(entry);assertTrue(manual.compatible);assertEquals("202p · 在线转码",manual.qualityLabel);
+    }
+    @Test public void quarkAutoAcceptsWideScreenHdWithoutLetterboxPadding()throws Exception{
+        CloudApi api=new CloudApi(Provider.QUARK,(u,b,h)->new JSONObject("{code:0,data:{video_list:[{video_info:{url:'https://video.quark.cn/hd.mp4',width:1280,height:536}}]}}"));
+        assertEquals("https://video.quark.cn/hd.mp4",api.resolveAutomaticCompatible(new CloudApi.Entry("movie","test.mkv",false,500)).url);
+    }
     @Test public void quarkDownload400FallsBackToAuthorizedVideoStream()throws Exception{
         AtomicInteger calls=new AtomicInteger();CloudApi api=new CloudApi(Provider.QUARK,(u,b,h)->{
             assertEquals("https://pan.quark.cn",h.get("Origin"));

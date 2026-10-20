@@ -105,6 +105,7 @@ public final class CloudLiveInstrumentation extends Instrumentation {
     @Override public void onStart(){
         Bundle result=new Bundle();
         try{
+            if(task.equals("quark_hd_guard")||task.equals("original_stall_refresh")||task.equals("tianyi_base_layer")){OriginalPlaybackLiveCheck.run(this,result,task);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("history_cloud_sources")){HistoryLiveCheck.cloudSources(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("history_record")){HistoryLiveCheck.record(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}
             if(task.equals("history_resume")){HistoryLiveCheck.resume(this,result);result.putString("status","PASS");finish(android.app.Activity.RESULT_OK,result);return;}

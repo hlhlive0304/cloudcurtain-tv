@@ -1,8 +1,12 @@
-# 云幕 TV 0.1.23 · 实验预览版
+# 云幕 TV 0.1.24 · 实验预览版
 
 Android 6.0+ 电视播放器，为雷鸟 85R675C 等 Android 电视设计。百度、夸克、阿里、天翼在电视内扫码登录，不需要电脑、NAS 或 OpenList 中转。使用同签名 APK 覆盖安装，保留本机账号和设置。0.1.16 起提供 GitHub 在线更新入口，可从首页或设置中检查更新、下载并由系统确认安装。发布步骤见 ONLINE-UPDATES.md。
 
-[下载 0.1.23-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.23-preview/CloudCurtainTV-0.1.23-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.23-preview)
+[下载 0.1.24-preview 安装包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/download/v0.1.24-preview/CloudCurtainTV-0.1.24-preview.apk) · [版本说明与源码包](https://github.com/hlhlive0304/cloudcurtain-tv/releases/tag/v0.1.24-preview)
+
+0.1.24 修正手动原片缓冲超时后未执行同画质重取的问题：自动重取最多一次，保留清晰度和位置；失败窗口可以重试当前画质。夸克自动恢复只接受已授权的高清兼容线路，没有高清时保留原片并说明，不再悄悄切入低清；仍可手动选择实际返回的档位。天翼、夸克大原文件采用有内存上限的缓冲储备。播放诊断增加解码器、首帧和基础层状态。
+
+“更多 → 原片解码”增加按当前文件选择的 HEVC 基础层模式，默认关闭。仅对 Media3 判定可使用 HEVC 基础层的杜比视界轨道生效，保留源视频分辨率、参数集和播放进度，其他编码不改动；它不保留完整杜比视界效果，也不能令不支持 4K HEVC 的设备支持该格式。天翼同片已验证基础层解析仍为 3840×2020、遥控器可切回自动，但模拟器仍无法显示这份 4K 视频，真实雷鸟电视尚未验收。夸克原片线路限速仍存在，本次不宣称修好 4K 原画。详见 [本版验收记录](validation/original-playback-0.1.24.md) 和 [原片测速](validation/quark-original-2026-10-20.md)。
 
 0.1.23 在首页增加“历史播放记录”和最近三条观看卡片，显示片名、集数、网盘和进度，确定后继续播放。完整列表保留最近 100 条，可用菜单键从头播放或移除记录，也可清空列表。播放时每 10 秒、退出和播完时保存；已看完的影片从头播放。网盘记录只保留文件引用，续播时重新获取地址；本地视频和视频直链也可记录。记录加密保存在电视本机，退出某个网盘时移除其对应记录。本机影片索引能对应的旧进度会补回并标记“较早记录”，没有日期的旧进度不会编造观看时间。详见 [0.1.23 验收记录](validation/playback-history-0.1.23.md)。
 

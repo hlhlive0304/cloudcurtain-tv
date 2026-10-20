@@ -14,14 +14,14 @@ final class PlaybackLiveCheck {
   if(movie==null)throw new IOException("Movie missing");
   result.putString("key_hash",Integer.toHexString(movie.playbackKey().hashCode()));result.putLong("file_bytes",movie.size);
   CloudApi api=new CloudApi(movie.provider);if(movie.provider==Provider.ALI)api.selectAliSpace(movie.space);
-  MediaSpec media=mode.equals("compatible")?api.resolveCompatible(movie.entry()):mode.equals("original")?api.resolveOriginal(movie.entry()):mode.equals("auto")?api.resolveQuality(movie.entry(),"auto"):api.resolveSelected(movie.entry());
+  MediaSpec media=mode.equals("compatible")?api.resolveCompatible(movie.entry()):mode.equals("original")||mode.equals("original_network")?api.resolveOriginal(movie.entry()):mode.equals("auto")?api.resolveQuality(movie.entry(),"auto"):api.resolveSelected(movie.entry());
   result.putString("resolved_quality",media.quality);result.putBoolean("resolved_compatible",media.compatible);
   result.putString("returned_scheme",okhttp3.HttpUrl.get(media.url).scheme());if(mode.equals("network_https"))media.url=okhttp3.HttpUrl.get(media.url).newBuilder().scheme("https").port(443).build().toString();
   if(mode.equals("cdn_https")){try(okhttp3.Response first=Net.client(media).newCall(new okhttp3.Request.Builder().url(media.url).header("Range","bytes=0-0").build()).execute()){String target=first.request().url().newBuilder().scheme("https").port(443).build().toString();if(!Net.playbackHeadersHost(media,target))throw new IOException("Unverified CDN HTTPS target");media.url=target;}}
   if(mode.equals("datasource_request")){datasourceRequest(media,result);return;}
   if(mode.equals("request_ranges")){requestRanges(media,result);return;}
   sample(media,result,mode.equals("throughput")?64*1024*1024:8*1024*1024);
-  if(mode.equals("network")||mode.equals("network_https")||mode.equals("cdn_https")||mode.equals("throughput"))return;
+  if(mode.equals("network")||mode.equals("original_network")||mode.equals("network_https")||mode.equals("cdn_https")||mode.equals("throughput"))return;
   PlayerActivity activity=(PlayerActivity)test.startActivitySync(new Intent(test.getTargetContext(),PlayerActivity.class).putExtra("media",media.json()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
   Field pf=PlayerActivity.class.getDeclaredField("player"),mf=PlayerActivity.class.getDeclaredField("media"),sf=PlayerActivity.class.getDeclaredField("playbackStats"),ff=PlayerActivity.class.getDeclaredField("firstFrame");pf.setAccessible(true);mf.setAccessible(true);sf.setAccessible(true);ff.setAccessible(true);
   long start=SystemClock.elapsedRealtime();final long[] prev={-1,0};final int[] ready={0},waiting={0};final boolean[] sought={false};

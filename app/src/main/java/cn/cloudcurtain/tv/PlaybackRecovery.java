@@ -4,6 +4,7 @@ import androidx.media3.common.PlaybackException;
 
 /** Separate bounded budgets for an expired address and an unsupported original video. */
 final class PlaybackRecovery {
+    enum Action { NONE, REFRESH, COMPATIBLE }
     static final long STALL_MS=45000;
     private final boolean addressEnabled,compatibleEnabled;
     private boolean addressUsed,compatibleUsed;
@@ -22,4 +23,16 @@ final class PlaybackRecovery {
     private boolean claimAddress(){if(!addressEnabled||addressUsed)return false;addressUsed=true;return true;}
     private boolean claimCompatible(boolean eligible){if(!compatibleEnabled||compatibleUsed||!eligible)return false;compatibleUsed=true;return true;}
     boolean used(){return addressUsed||compatibleUsed;}
+    Action onStall(long waitingMs,MediaSpec media,boolean rendered){
+        boolean auto="auto".equals(media.quality)&&!media.compatible;
+        if(waitingMs<(auto&&rendered&&compatibleEnabled?15000:STALL_MS))return Action.NONE;
+        if(auto&&compatibleEnabled)return claimCompatible(true)?Action.COMPATIBLE:Action.NONE;
+        return claimAddress()?Action.REFRESH:Action.NONE;
+    }
+    Action onError(Throwable error,int code,MediaSpec media){
+        int status=PlaybackErrors.httpStatus(error);
+        if(status==401||status==403||status==404||status==410)return claimAddress()?Action.REFRESH:Action.NONE;
+        if(!"auto".equals(media.quality)||media.compatible)return Action.NONE;
+        return error(error,code,false)?Action.COMPATIBLE:Action.NONE;
+    }
 }
