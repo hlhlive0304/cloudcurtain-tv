@@ -14,15 +14,20 @@ final class PlaybackLiveCheck {
   if(movie==null)throw new IOException("Movie missing");
   result.putString("key_hash",Integer.toHexString(movie.playbackKey().hashCode()));result.putLong("file_bytes",movie.size);
   CloudApi api=new CloudApi(movie.provider);if(movie.provider==Provider.ALI)api.selectAliSpace(movie.space);
-  MediaSpec media=mode.equals("compatible")?api.resolveCompatible(movie.entry()):mode.equals("original")||mode.equals("original_network")?api.resolveOriginal(movie.entry()):mode.equals("auto")?api.resolveQuality(movie.entry(),"auto"):api.resolveSelected(movie.entry());
+  MediaSpec media=mode.equals("compatible")?api.resolveCompatible(movie.entry()):mode.equals("original")||mode.equals("original_network")||mode.equals("original_continuous")||mode.equals("original_ranges")?api.resolveOriginal(movie.entry()):mode.equals("auto")||mode.equals("auto_continuous")?api.resolveQuality(movie.entry(),"auto"):api.resolveSelected(movie.entry());
   result.putString("resolved_quality",media.quality);result.putBoolean("resolved_compatible",media.compatible);
   result.putString("returned_scheme",okhttp3.HttpUrl.get(media.url).scheme());if(mode.equals("network_https"))media.url=okhttp3.HttpUrl.get(media.url).newBuilder().scheme("https").port(443).build().toString();
   if(mode.equals("cdn_https")){try(okhttp3.Response first=Net.client(media).newCall(new okhttp3.Request.Builder().url(media.url).header("Range","bytes=0-0").build()).execute()){String target=first.request().url().newBuilder().scheme("https").port(443).build().toString();if(!Net.playbackHeadersHost(media,target))throw new IOException("Unverified CDN HTTPS target");media.url=target;}}
+  if(mode.equals("original_ranges")){
+   for(String name:HttpUrl.get(media.url).queryParameterNames())if(name.toLowerCase(java.util.Locale.ROOT).matches(".*(speed|limit|rate|vip).*")&&HttpUrl.get(media.url).queryParameter(name).matches("[0-9]{1,16}"))result.putString("numeric_"+name,HttpUrl.get(media.url).queryParameter(name));
+   rangeSpeeds(media,result);return;
+  }
   if(mode.equals("datasource_request")){datasourceRequest(media,result);return;}
   if(mode.equals("request_ranges")){requestRanges(media,result);return;}
   sample(media,result,mode.equals("throughput")?64*1024*1024:8*1024*1024);
   if(mode.equals("network")||mode.equals("original_network")||mode.equals("network_https")||mode.equals("cdn_https")||mode.equals("throughput"))return;
-  PlayerActivity activity=(PlayerActivity)test.startActivitySync(new Intent(test.getTargetContext(),PlayerActivity.class).putExtra("media",media.json()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+  Intent open=new Intent(test.getTargetContext(),PlayerActivity.class).putExtra("media",media.json()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);if(mode.endsWith("_continuous"))open.putExtra("resume_position",0L);
+  PlayerActivity activity=(PlayerActivity)test.startActivitySync(open);
   Field pf=PlayerActivity.class.getDeclaredField("player"),mf=PlayerActivity.class.getDeclaredField("media"),sf=PlayerActivity.class.getDeclaredField("playbackStats"),ff=PlayerActivity.class.getDeclaredField("firstFrame");pf.setAccessible(true);mf.setAccessible(true);sf.setAccessible(true);ff.setAccessible(true);
   long start=SystemClock.elapsedRealtime();final long[] prev={-1,0};final int[] ready={0},waiting={0};final boolean[] sought={false};
   while(SystemClock.elapsedRealtime()-start<Math.max(30,seconds)*1000L){
@@ -36,13 +41,24 @@ final class PlaybackLiveCheck {
     if(prev[0]>=0&&p.getCurrentPosition()>prev[0]+400)prev[1]++;prev[0]=p.getCurrentPosition();
     Format f=p.getVideoFormat();if(f!=null){result.putInt("decoded_width",f.width);result.putInt("decoded_height",f.height);result.putString("decoded_mime",f.sampleMimeType);}
     if(p.getPlayerError()!=null){result.putString("player_error",p.getPlayerError().getErrorCodeName());result.putInt("player_http",PlaybackErrors.httpStatus(p.getPlayerError()));if(p.getPlayerError() instanceof androidx.media3.exoplayer.ExoPlaybackException){androidx.media3.common.Format failed=((androidx.media3.exoplayer.ExoPlaybackException)p.getPlayerError()).rendererFormat;if(failed!=null){result.putString("failed_mime",failed.sampleMimeType);result.putString("failed_codecs",failed.codecs);result.putInt("failed_width",failed.width);result.putInt("failed_height",failed.height);}}for(Throwable cause=p.getPlayerError();cause!=null;cause=cause.getCause())if(cause instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException){androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException failure=(androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)cause;result.putString("failure_host",UrlRules.host(failure.dataSpec.uri.toString()));result.putLong("failure_position",failure.dataSpec.position);result.putLong("failure_length",failure.dataSpec.length);result.putInt("failure_flags",failure.dataSpec.flags);String body=new String(failure.responseBody,java.nio.charset.StandardCharsets.UTF_8);java.util.regex.Matcher code=java.util.regex.Pattern.compile("<Code>([A-Za-z0-9_.-]{1,80})</Code>").matcher(body);result.putString("failure_server_code",code.find()?code.group(1):"");}}
-    result.putString("actual_quality",((MediaSpec)mf.get(activity)).quality);
-    if(!sought[0]&&ready[0]>=12){sought[0]=true;p.seekTo(Math.max(60000,p.getDuration()/2));prev[0]=-1;result.putBoolean("seek_requested",true);}
+    result.putString("actual_quality",((MediaSpec)mf.get(activity)).quality);result.putBoolean("actual_online",((MediaSpec)mf.get(activity)).compatible||((MediaSpec)mf.get(activity)).quality.startsWith("quark:"));
+    androidx.media3.exoplayer.DecoderCounters counters=p.getVideoDecoderCounters();if(counters!=null){counters.ensureUpdated();result.putInt("rendered_frames",counters.renderedOutputBufferCount);result.putInt("dropped_frames",counters.droppedBufferCount);}
+    if(!sought[0]&&ready[0]>=(mode.endsWith("_continuous")?80:12)){result.putLong("uninterrupted_position_ms",p.getCurrentPosition());sought[0]=true;p.seekTo(Math.max(60000,p.getDuration()/2));prev[0]=-1;result.putBoolean("seek_requested",true);}
    }catch(Exception e){throw new RuntimeException(e);}});
   }
   result.putInt("playing_seconds",ready[0]);result.putInt("buffering_seconds",waiting[0]);result.putLong("advancing_samples",prev[1]);result.putLong("elapsed_ms",SystemClock.elapsedRealtime()-start);
   test.runOnMainSync(activity::finish);
   if(ready[0]<20||prev[1]<15)throw new IOException("Playback did not advance sufficiently");
+  if(mode.endsWith("_continuous")&&(ready[0]<100||result.getLong("uninterrupted_position_ms")<75000||result.getInt("rendered_frames")<500))throw new IOException("Continuous playback or frame rendering insufficient");
+ }
+ private static void rangeSpeeds(MediaSpec media,Bundle r)throws Exception{
+  String[] ranges={"bytes=0-","bytes=0-8388607","bytes=8388608-16777215"};
+  OkHttpClient client=Net.client(media).newBuilder().callTimeout(6,java.util.concurrent.TimeUnit.SECONDS).build();
+  for(int i=0;i<ranges.length;i++){long start=SystemClock.elapsedRealtime(),bytes=0;try(Response response=client.newCall(new Request.Builder().url(media.url).header("Range",ranges[i]).build()).execute()){
+   r.putInt("range_"+i+"_http",response.code());if(response.code()!=206||response.body()==null)throw new IOException("No partial response");
+   byte[] buffer=new byte[65536];try(InputStream in=response.body().byteStream()){int n;while(bytes<8388608&&(n=in.read(buffer,0,(int)Math.min(buffer.length,8388608-bytes)))!=-1){bytes+=n;if(SystemClock.elapsedRealtime()-start>=5000)break;}}
+  }catch(IOException e){r.putString("range_"+i+"_end",e.getClass().getSimpleName());}
+  long ms=Math.max(1,SystemClock.elapsedRealtime()-start);r.putLong("range_"+i+"_bytes",bytes);r.putLong("range_"+i+"_ms",ms);r.putLong("range_"+i+"_kib_per_second",bytes*1000/ms/1024);}
  }
  private static void datasourceRequest(MediaSpec media,Bundle r)throws Exception{
   final int[] calls={0};

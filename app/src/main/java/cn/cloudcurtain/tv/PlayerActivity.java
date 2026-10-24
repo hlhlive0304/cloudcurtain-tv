@@ -43,7 +43,7 @@ public class PlayerActivity extends Activity {
             PlaybackRecovery.Action action=recovery.onStall(now-waitingSince,media,firstFrame);
             if(action==PlaybackRecovery.Action.REFRESH){recoverAutomatically();return;}
             if(action==PlaybackRecovery.Action.COMPATIBLE){refreshAddress(true,null,true);return;}
-            player.pause();showFailure("视频长时间没有出画面，请重新获取播放地址或返回文件。",!compatiblePlayback&&supportsRecovery());
+            player.pause();showFailure((firstFrame?"视频在当前进度等待缓冲超时。":"当前线路长时间未显示新画面。")+"\n已保留进度，可重试当前画质。",!compatiblePlayback&&supportsRecovery());
         }
         handler.postDelayed(this,1000);
     }};
@@ -138,7 +138,8 @@ public class PlayerActivity extends Activity {
         }catch(Exception e){LoginDiagnostics.record(this,provider,"切换剧集",e);runOnUiThread(()->{if(!isFinishing()){episodeSwitching=false;view.setControllerShowTimeoutMs(5000);updateEpisodeButtons();if(started)Ui.message(this,"切换剧集失败",LoginErrors.friendly(e)+"\n当前视频和播放进度已保留，可重试。");}});}});
     }
     private void init(){if(player!=null||media==null)return;soundMode=getSharedPreferences("settings",0).getString("sound_mode","auto");firstFrame=false;watchdogFailed=false;waitingSince=0;videoDecoder="";baseLayerApplied=false;playbackStats.reset();
-        OkHttpDataSource.Factory http=new OkHttpDataSource.Factory(PlaybackNetwork.client(media)).setUserAgent(media.headers.containsKey("User-Agent")?media.headers.get("User-Agent"):Net.UA).setTransferListener(playbackStats);
+        String agent=media.headers.containsKey("User-Agent")?media.headers.get("User-Agent"):Net.UA;
+        androidx.media3.datasource.DataSource.Factory http=QuarkRangeSource.applies(media)?new QuarkRangeSource.Factory(PlaybackNetwork.client(media),agent,playbackStats):new OkHttpDataSource.Factory(PlaybackNetwork.client(media)).setUserAgent(agent).setTransferListener(playbackStats);
         DefaultDataSource.Factory data=new DefaultDataSource.Factory(this,http);
         player=new ExoPlayer.Builder(this).setRenderersFactory(new androidx.media3.exoplayer.DefaultRenderersFactory(this).setEnableDecoderFallback(true)).setLoadControl(PlaybackBuffer.create(media)).setMediaSourceFactory(new DefaultMediaSourceFactory(data,captions.wrap(VideoDecode.wrap(new androidx.media3.extractor.DefaultExtractorsFactory(),hevcBase,()->baseLayerApplied=true),"main"))).setSeekBackIncrementMs(10000).setSeekForwardIncrementMs(10000).build();
         player.addAnalyticsListener(new androidx.media3.exoplayer.analytics.AnalyticsListener(){@Override public void onVideoDecoderInitialized(EventTime time,String name,long timestamp,long duration){videoDecoder=name;}});

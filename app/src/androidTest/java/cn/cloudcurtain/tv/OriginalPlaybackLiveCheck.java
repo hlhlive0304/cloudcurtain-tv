@@ -20,7 +20,18 @@ final class OriginalPlaybackLiveCheck {
         PlaybackHistory.IO.submit(()->{}).get(10,TimeUnit.SECONDS);Map<String,?> oldProgress=new HashMap<>(progress.getAll()),oldHistory=new HashMap<>(history.getAll());
         PlayerActivity a=null;java.net.ServerSocket listener=null;List<java.net.Socket> sockets=Collections.synchronizedList(new ArrayList<>());
         try{
-            if(task.equals("quark_hd_guard")){
+            if(task.equals("quark_original_next")){
+                MovieLibrary.Movie first=movie(t,"QUARK","80430006"),second=movie(t,"QUARK","87dff3f6");
+                progress.edit().putString("quality:"+Integer.toHexString(first.playbackKey().hashCode()),"original").putString("quality:"+Integer.toHexString(second.playbackKey().hashCode()),"original").commit();
+                MediaSpec source=new CloudApi(Provider.QUARK).resolveOriginal(first.entry()).inFolder(first.folder,first.parents);a=open(t,source,40000);final PlayerActivity screen=a;
+                waitFor(t,()->field("firstFrame").getBoolean(screen)&&screen.findViewById(android.R.id.content).findViewWithTag("episode_next").isEnabled());
+                Instrumentation.ActivityMonitor monitor=t.addMonitor(PlayerActivity.class.getName(),null,false);
+                t.runOnMainSync(()->screen.findViewById(android.R.id.content).findViewWithTag("episode_next").requestFocus());t.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER);
+                PlayerActivity next=(PlayerActivity)t.waitForMonitorWithTimeout(monitor,45000);t.removeMonitor(monitor);if(next==null)throw new IOException("Quark next episode did not open");a=next;
+                waitFor(t,()->field("firstFrame").getBoolean(next)&&player(next).isPlaying());advance(t,next);
+                t.runOnMainSync(()->{try{Format video=player(next).getVideoFormat();if(!media(next).key.equals(second.playbackKey())||media(next).compatible||!media(next).quality.equals("original")||video.width!=1920||video.height!=1080)throw new IllegalStateException("Next episode was not the original");out.putInt("next_width",video.width);out.putInt("next_height",video.height);out.putBoolean("next_from_start",player(next).getCurrentPosition()<15000);}catch(Exception e){throw new RuntimeException(e);}});
+                out.putBoolean("remote_next_original_renders",true);out.putBoolean("next_advances",true);
+            }else if(task.equals("quark_hd_guard")){
                 MovieLibrary.Movie movie=movie(t,"QUARK","22b1a8b1");MediaSpec source=new CloudApi(Provider.QUARK).resolveQuality(movie.entry(),"auto");
                 if(source.compatible)throw new IOException("An original is required for this test");a=open(t,source,52000);final PlayerActivity screen=a;
                 waitFor(t,()->{AlertDialog d=(AlertDialog)field("errorDialog").get(screen);return d!=null&&d.isShowing()&&((android.widget.TextView)d.findViewById(android.R.id.message)).getText().toString().contains("低清");});
